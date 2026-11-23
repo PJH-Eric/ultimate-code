@@ -25,9 +25,6 @@
 
 - **Cloudflare 備援已上線**：https://ultimate-code-backup.eric-games.workers.dev（實測 /health、WebSocket 建房、非允許來源 403、累加地雷規則）。
 - **結構與其他 14 款遊戲相同**（2026-11-23 比對後調整）：repo 自帶 `cloudflare/`（含 `build-worker.cjs`，從 stair-kids 複製並登錄 ultimate-code），根目錄 `wrangler.toml`（Durable Object `LOBBY`、observability logs／traces）。已移除自寫的 GitHub Actions Worker 部署（缺 token 時只顯示綠燈、實際沒部署）。
-- **自動部署（Cloudflare Workers Builds，需在 Cloudflare 頁面連一次 Git）**：Workers & Pages → ultimate-code-backup → Settings → Build → Connect → GitHub `PJH-Eric/ultimate-code`，分支 main，根目錄 `/`。
-  - Build command：`cd cloudflare && npm ci && node build-worker.cjs`
-  - Deploy command：`npx wrangler deploy`
-  - 其他遊戲的實際指令存在 Cloudflare 頁面裡（wrangler 的登入授權沒有讀取 Workers Builds 的權限）；上面兩行已在本機用同樣方式驗證：打包 45 KB、`wrangler deploy --dry-run` 綁定 LOBBY 正確。
+- **自動部署（Cloudflare Workers Builds，已連線 GitHub）**：push main 後 Cloudflare 自動建置並部署（2026-11-23 實測：推送 75 秒後產生新部署，WebSocket 建房正常）。只需 Deploy command「npx wrangler deploy」：wrangler.toml 的 [build] 會先自動 npm ci 並打包；build-worker.cjs 在 Cloudflare 的 repo/ 資料夾裡改用 Worker 名稱判斷遊戲 ID。
 - **手動部署**：`cd cloudflare && npm ci && node build-worker.cjs`，回到根目錄再 `wrangler deploy`。
 - **Render**：workspace 免費額度用完，`ultimate-code-sg` 尚未建立；前端 GAME_SERVER_URL 指向 Cloudflare Worker。
