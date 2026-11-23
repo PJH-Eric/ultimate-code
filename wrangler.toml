@@ -4,6 +4,11 @@ compatibility_date = "2026-11-19"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+# 部署前自動打包（Cloudflare Workers Builds 只設 Deploy command「npx wrangler deploy」也能成功）
+[build]
+command = "cd cloudflare && npm ci --no-audit --no-fund && node build-worker.cjs"
+watch_dir = ["server.js", "lib", "public/js/core", "cloudflare/worker.mjs", "cloudflare/runtime.mjs", "cloudflare/build.cjs"]
+
 [[durable_objects.bindings]]
 name = "LOBBY"
 class_name = "GameLobby"
