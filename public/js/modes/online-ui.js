@@ -164,7 +164,8 @@
     function seg(id, items, value, label) { var h = K.segHtml(pre + id, items, String(value), label); return editable ? h : h.replace(/class="seg-btn"/g, 'class="seg-btn" disabled'); }
     return '<div class="set-form">' +
       field(t('room.mode'), seg('mode', [{ value: 'range', label: t('mode.range'), icon: K.icon('safe') }, { value: 'count', label: t('mode.count'), icon: K.icon('plus') }], s.mode, t('room.mode')), t(s.mode === 'count' ? 'mode.countSub' : 'mode.rangeSub')) +
-      (s.mode === 'range' ? field(t('room.setter'), seg('setter', [{ value: 'cpu', label: t('room.setterCpu') }, { value: 'player', label: t('room.setterPlayer') }], s.setterMode, t('room.setter')), t(s.setterMode === 'player' ? 'room.setterPlayerHelp' : 'room.setterCpuHelp')) : '') +
+      /* 兩種玩法都能由隊員輪流出題（一般＝出密碼、累加＝埋地雷） */
+      field(t('room.setter'), seg('setter', [{ value: 'cpu', label: t('room.setterCpu') }, { value: 'player', label: t('room.setterPlayer') }], s.setterMode, t('room.setter')), t(s.setterMode === 'player' ? 'room.setterPlayerHelp' : 'room.setterCpuHelp')) +
       '<div class="set-row"><label class="set-label" for="' + pre + 'teams">' + esc(t('room.teams')) + '<small>' + esc(t('room.teamsHelp')) + '</small></label>' + K.switchHtml(pre + 'teams', s.teams, t('room.teams')).replace('<button', '<button' + dis) + '</div>' +
       '<div class="set-row"><label class="set-label" for="' + pre + 'items">' + esc(t('room.items')) + '<small>' + esc(t('room.itemsHelp')) + '</small></label>' + K.switchHtml(pre + 'items', s.items, t('room.items')).replace('<button', '<button' + dis) + '</div>' +
       field(t('room.turnSec'), seg('turn', R.TURN_SECS.map(function (v) { return { value: String(v), label: v ? t('room.secN', { n: v }) : t('room.noLimit') }; }), s.turnSec, t('room.turnSec'))) +
@@ -294,7 +295,7 @@
   function roomSummary() {
     var s = room.settings;
     var rows = [[t('room.mode'), t(s.mode === 'count' ? 'mode.count' : 'mode.range')]];
-    if (s.mode === 'range') rows.push([t('room.setter'), t(s.setterMode === 'player' ? 'room.setterPlayer' : 'room.setterCpu')]);
+    rows.push([t('room.setter'), t(s.setterMode === 'player' ? 'room.setterPlayer' : 'room.setterCpu')]);
     rows.push([t('room.teams'), t(s.teams ? 'common.on' : 'common.off')], [t('room.items'), t(s.items ? 'common.on' : 'common.off')],
       [t('room.turnSec'), s.turnSec ? t('room.secN', { n: s.turnSec }) : t('room.noLimit')], [t('room.rounds'), t('room.roundsN', { n: s.rounds })]);
     var html = '<div class="sum-mode"><b>' + esc(t('room.title', { c: room.id })) + '</b><span>' + esc(t(room.you.role === 'spectator' ? 'room.youSpec' : room.you.host ? 'room.youHost' : 'room.youPlayer')) + '</span></div>' +

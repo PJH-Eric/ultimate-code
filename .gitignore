@@ -26,3 +26,4 @@ tests/shots/
 /tmp/
 
 cloudflare/dist/
+cloudflare/node_modules/

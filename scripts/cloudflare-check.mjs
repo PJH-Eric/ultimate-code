@@ -1,8 +1,9 @@
 /* ===== scripts/cloudflare-check.mjs — Cloudflare 備援相容性檢查（開發用）=====
- * 1. 用 game-lobby/cloudflare/build.cjs 實際打包本遊戲（確認沒有打包不了的依賴，例如 node:sqlite）。
- * 2. 用 game-lobby/cloudflare/runtime.mjs（Durable Object 裡的 http／ws／計時器轉接層）載入同一份 server.js，
+ * 1. 用 repo 自帶的 cloudflare/build-worker.cjs 同一套打包器（與其他遊戲相同）實際打包本遊戲（確認沒有 node:sqlite 這類打包不了的依賴）。
+ * 0. 確認根目錄 wrangler.toml 與其他遊戲一致：Durable Object LOBBY、observability logs／traces 開啟。
+ * 2. 用 cloudflare/runtime.mjs（Durable Object 裡的 http／ws／計時器轉接層）載入同一份 server.js，
  *    以假 WebSocket 連兩位玩家：建房、加入、準備、開局、打完一局，並確認 /health 與「沒人連線時計時器停止」。
- * 用法：node scripts/cloudflare-check.mjs   （預設 game-lobby 在旁邊的資料夾；可用 GAME_LOBBY 指定）
+ * 用法：先 cd cloudflare && npm ci，再 node scripts/cloudflare-check.mjs
  */
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -12,16 +13,20 @@ import assert from 'node:assert';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
-const lobby = path.resolve(process.env.GAME_LOBBY || path.join(root, '..', 'game-lobby'));
-const cf = path.join(lobby, 'cloudflare');
+const cf = path.join(root, 'cloudflare');
 const require = createRequire(path.join(cf, 'build.cjs'));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/* ---------- 0. wrangler.toml ---------- */
+const toml = fs.readFileSync(path.join(root, 'wrangler.toml'), 'utf8');
+for (const k of ['name = "ultimate-code-backup"', 'main = "cloudflare/dist/worker.mjs"', 'class_name = "GameLobby"', '[observability.logs]', '[observability.traces]']) assert.ok(toml.includes(k), 'wrangler.toml 缺少 ' + k);
+console.log('✓ wrangler.toml 與其他遊戲一致');
+
 /* ---------- 1. 打包 ---------- */
 const games = require('./games.cjs');
-const entry = games['ultimate-code'] || { path: '/ws', maxPayload: 8192 };
-games['ultimate-code'] = entry;                       // 只在記憶體加入，不改 game-lobby 的檔案
-process.env.GAME_SOURCE_ROOT = path.join(root, '..');
+const entry = games['ultimate-code'];
+assert.ok(entry, 'cloudflare/games.cjs 要登錄 ultimate-code');
+process.env.GAME_SOURCE_DIR = root;
 process.env.GAME_ESBUILD_MODULE = path.join(cf, 'node_modules', 'esbuild');
 const { buildGame } = require('./build.cjs');
 const bundle = await buildGame('ultimate-code');

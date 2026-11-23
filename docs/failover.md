@@ -23,13 +23,11 @@
 
 ## 部署狀態
 
-- **Cloudflare 備援已上線**：https://ultimate-code-backup.eric-games.workers.dev（2026-11-23 由本機 wrangler 部署；/health、WebSocket 建房、非允許來源 403 皆已實測）。
-- **自動部署**：`.github/workflows/deploy-cloudflare.yml` 在 push main 時用 game-lobby 打包器打包、wrangler 部署並檢查 /health。repo secret `CLOUDFLARE_ACCOUNT_ID` 已設定；`CLOUDFLARE_API_TOKEN` 需由帳號擁有者在 Cloudflare 建立（權限 Workers Scripts:Edit），未設定前工作流程只做打包檢查。
-- **手動部署**：`wrangler login` 後，依工作流程同樣的打包指令產生 `cloudflare/dist/worker.mjs`，再 `wrangler deploy --config cloudflare/wrangler.toml`。
-- **Render**：workspace 免費方案額度已用完，服務尚未建立（`render.yaml` 已驗證、autoDeploy 已設定）。
-
-## 上線還需要（尚未執行）
-
-1. ~~game-lobby 這兩行設定~~：已提交並推送（d514544）。
-2. 建立 Render 服務（`render.yaml`）與 Cloudflare worker（game-lobby 的部署流程），並在本 repo 的 GitHub Variables 設定 `GAME_SERVER_URL`。
-3. 依使用者指示，目前**只做本機 git，不 push、不部署**。
+- **Cloudflare 備援已上線**：https://ultimate-code-backup.eric-games.workers.dev（實測 /health、WebSocket 建房、非允許來源 403、累加地雷規則）。
+- **結構與其他 14 款遊戲相同**（2026-11-23 比對後調整）：repo 自帶 `cloudflare/`（含 `build-worker.cjs`，從 stair-kids 複製並登錄 ultimate-code），根目錄 `wrangler.toml`（Durable Object `LOBBY`、observability logs／traces）。已移除自寫的 GitHub Actions Worker 部署（缺 token 時只顯示綠燈、實際沒部署）。
+- **自動部署（Cloudflare Workers Builds，需在 Cloudflare 頁面連一次 Git）**：Workers & Pages → ultimate-code-backup → Settings → Build → Connect → GitHub `PJH-Eric/ultimate-code`，分支 main，根目錄 `/`。
+  - Build command：`cd cloudflare && npm ci && node build-worker.cjs`
+  - Deploy command：`npx wrangler deploy`
+  - 其他遊戲的實際指令存在 Cloudflare 頁面裡（wrangler 的登入授權沒有讀取 Workers Builds 的權限）；上面兩行已在本機用同樣方式驗證：打包 45 KB、`wrangler deploy --dry-run` 綁定 LOBBY 正確。
+- **手動部署**：`cd cloudflare && npm ci && node build-worker.cjs`，回到根目錄再 `wrangler deploy`。
+- **Render**：workspace 免費額度用完，`ultimate-code-sg` 尚未建立；前端 GAME_SERVER_URL 指向 Cloudflare Worker。
