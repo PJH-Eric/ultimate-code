@@ -312,16 +312,31 @@
     return null;
   }
 
-  /* ---------- 單人挑戰 ---------- */
-  /** 一般．破解：用的次數越少星星越多（≤7 次 3★、≤9 次 2★、其餘 1★） */
-  function crackStars(n) { return n <= 7 ? 3 : n <= 9 ? 2 : 1; }
-  function createCrack(rng) {
-    rng = rng || rngFrom(randomSeed());
-    return { kind: 'crack', secret: rng.range(MIN, MAX), lo: MIN, hi: MAX, history: [], over: false, won: false };
+  /* ---------- 單人挑戰（規則同線上，一個人玩，可隨時「收手」計分） ----------
+   * crack 一般．單人：密碼 1～100；猜中就爆炸（分數 0）。隨時收手，分數＝已排除的數字數（最高 99）。
+   * step  累加．單人：地雷 1～100；+1／+2／+3，停在地雷上或跨過就爆炸（分數 0）。隨時收手，分數＝收手時的數字。
+   * 一個人玩最後一定會踩中，所以靠「收手」取捨：往中間猜／加大步伐分數高，但風險也高。
+   */
+  var SOLO_STARS = { crack: [75, 90, 97], step: [30, 50, 70] };    // 1★／2★／3★ 門檻
+  function soloStars(kind, score) {
+    var t = SOLO_STARS[kind] || SOLO_STARS.crack;
+    return score >= t[2] ? 3 : score >= t[1] ? 2 : score >= t[0] ? 1 : 0;
   }
-  /** 單人破解：猜中＝過關 */
-  function crackGuess(c, v) {
+  function soloScore(c) { return c.kind === 'crack' ? (MAX - MIN + 1) - (c.hi - c.lo + 1) : c.total; }
+  function createSolo(kind, rng, secret) {
+    rng = rng || rngFrom(randomSeed());
+    var sec = Number(secret);
+    return {
+      kind: kind === 'step' ? 'step' : 'crack',
+      secret: Number.isInteger(sec) && sec >= MIN && sec <= MAX ? sec : rng.range(MIN, MAX),
+      lo: MIN, hi: MAX, total: 0, history: [], over: false, banked: false, hit: false, score: 0, stars: 0
+    };
+  }
+  function boom(c) { c.over = true; c.hit = true; c.score = 0; c.stars = 0; }
+  /** 一般．單人：猜一個範圍內的數字 */
+  function soloGuess(c, v) {
     if (c.over) return { ok: false, err: 'over' };
+    if (c.kind !== 'crack') return { ok: false, err: 'bad_guess' };
     v = Number(v);
     if (!Number.isInteger(v) || v < c.lo || v > c.hi) return { ok: false, err: 'bad_guess' };
     var result = v === c.secret ? 'hit' : v < c.secret ? 'low' : 'high';
@@ -329,58 +344,29 @@
     if (result === 'low') c.lo = v + 1; else if (result === 'high') c.hi = v - 1;
     ev.nlo = c.lo; ev.nhi = c.hi;
     c.history.push(ev);
-    if (result === 'hit') { c.over = true; c.won = true; c.stars = crackStars(c.history.length); }
+    if (result === 'hit') boom(c);
     return { ok: true, ev: ev };
   }
-
-  var MINES = 5;
-  /** 從 0 走到 100（每步 +1～+3、不停在地雷上）的最少步數；走不到回傳 -1 */
-  function minSteps(mines) {
-    var bad = {};
-    mines.forEach(function (m) { bad[m] = true; });
-    var dist = [0];
-    for (var i = 1; i <= TARGET; i++) {
-      dist[i] = -1;
-      if (bad[i]) continue;
-      var best = -1;
-      for (var k = 1; k <= 3; k++) if (i - k >= 0 && dist[i - k] >= 0 && (best < 0 || dist[i - k] + 1 < best)) best = dist[i - k] + 1;
-      dist[i] = best;
-    }
-    return dist[TARGET];
-  }
-  /**
-   * 累加．踩點：5 個地雷放在 2～99，保證走得到，且至少 3 個落在 3 的倍數上（一路 +3 會踩到，需要動腦繞路）。
-   */
-  function createStep(rng) {
-    rng = rng || rngFrom(randomSeed());
-    for (var tries = 0; tries < 500; tries++) {
-      var set = {}, list = [];
-      var triples = 0;
-      while (list.length < MINES) {
-        var v = list.length < 3 ? 3 * rng.range(1, 33) : rng.range(2, 99);
-        if (v < 2 || v > 99 || set[v]) continue;
-        set[v] = true; list.push(v);
-        if (v % 3 === 0) triples++;
-      }
-      list.sort(function (a, b) { return a - b; });
-      var best = minSteps(list);
-      if (best > 0 && triples >= 3) return { kind: 'step', mines: list, total: 0, steps: 0, best: best, path: [0], over: false, won: false, fail: null };
-    }
-    return { kind: 'step', mines: [10, 30, 50, 70, 90], total: 0, steps: 0, best: minSteps([10, 30, 50, 70, 90]), path: [0], over: false, won: false, fail: null };
-  }
-  /** 星數：等於最少步數 3★、多 2 步內 2★、其餘 1★ */
-  function stepStars(steps, best) { return steps <= best ? 3 : steps <= best + 2 ? 2 : 1; }
-  function stepAdd(s, n) {
-    if (s.over) return { ok: false, err: 'over' };
+  /** 累加．單人：+n（不能超過 100） */
+  function soloAdd(c, n) {
+    if (c.over) return { ok: false, err: 'over' };
     n = Number(n);
-    if (STEPS.indexOf(n) < 0) return { ok: false, err: 'bad_add' };
-    var from = s.total;
-    s.total += n; s.steps++; s.path.push(s.total);
-    var ev = { kind: 'add', value: n, from: from, to: s.total, result: 'ok' };
-    if (s.total > TARGET) { s.over = true; s.fail = 'over'; ev.result = 'over'; }
-    else if (s.mines.indexOf(s.total) >= 0) { s.over = true; s.fail = 'mine'; ev.result = 'mine'; }
-    else if (s.total === TARGET) { s.over = true; s.won = true; s.stars = stepStars(s.steps, s.best); ev.result = 'goal'; }
+    if (c.kind !== 'step' || STEPS.indexOf(n) < 0 || c.total + n > TARGET) return { ok: false, err: 'bad_add' };
+    var from = c.total;
+    c.total += n;
+    var hit = from < c.secret && c.secret <= c.total;
+    var ev = { kind: 'add', value: n, from: from, to: c.total, result: hit ? 'hit' : 'ok', mineAt: hit ? c.secret : undefined };
+    c.history.push(ev);
+    if (hit) boom(c);
     return { ok: true, ev: ev };
+  }
+  /** 收手：結束並計分 */
+  function soloBank(c) {
+    if (c.over) return { ok: false, err: 'over' };
+    c.over = true; c.banked = true;
+    c.score = soloScore(c);
+    c.stars = soloStars(c.kind, c.score);
+    return { ok: true, score: c.score, stars: c.stars };
   }
 
   /* ---------- 房間設定（伺服器與畫面共用的驗證） ---------- */
@@ -403,14 +389,13 @@
 
   return {
     MIN: MIN, MAX: MAX, TARGET: TARGET, STEPS: STEPS, ITEMS: ITEMS, TEAMS: TEAMS, ROUNDS: ROUNDS, TURN_SECS: TURN_SECS,
-    CAP_MIN: CAP_MIN, CAP_MAX: CAP_MAX, MINES: MINES, DEFAULT_SETTINGS: DEFAULT_SETTINGS,
+    CAP_MIN: CAP_MIN, CAP_MAX: CAP_MAX, DEFAULT_SETTINGS: DEFAULT_SETTINGS,
     rngFrom: rngFrom, randomSeed: randomSeed, hashStr: hashStr,
     buildOrder: buildOrder, createGame: createGame, current: current, isGuesser: isGuesser, teamOf: teamOf,
     legalGuess: legalGuess, legalAdd: legalAdd, legalSteps: legalSteps, assignTargets: assignTargets,
     guess: guess, add: add, useItem: useItem, autoAct: autoAct, removePlayer: removePlayer, endGame: endGame,
     createMatch: createMatch, recordRound: recordRound, matchOver: matchOver, standings: standings, pickSetter: pickSetter, canStart: canStart,
-    crackStars: crackStars, createCrack: createCrack, crackGuess: crackGuess,
-    minSteps: minSteps, createStep: createStep, stepStars: stepStars, stepAdd: stepAdd,
+    SOLO_STARS: SOLO_STARS, soloStars: soloStars, soloScore: soloScore, createSolo: createSolo, soloGuess: soloGuess, soloAdd: soloAdd, soloBank: soloBank,
     normSettings: normSettings
   };
 });

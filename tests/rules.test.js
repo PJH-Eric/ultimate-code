@@ -277,31 +277,47 @@ test('輪流出題：不組隊照座位、組隊兩隊交替且隊內至少 2 �
 });
 
 /* ---------- 單人 ---------- */
-test('單人破解：猜中過關、星數門檻', () => {
-  const c = R.createCrack(R.rngFrom(3));
-  let lo = 1, hi = 100;
-  while (!c.over) { const m = (lo + hi) >> 1; const r = R.crackGuess(c, m); if (r.ev.result === 'low') lo = m + 1; else hi = m - 1; }
-  assert.ok(c.won); assert.ok(c.history.length <= 7, '二分法最多 7 次'); assert.strictEqual(c.stars, 3);
-  assert.deepStrictEqual([7, 8, 9, 10].map(R.crackStars), [3, 2, 2, 1]);
-  assert.strictEqual(R.crackGuess(c, 5).err, 'over');
+test('單人一般：規則同線上（猜中就爆炸、分數 0）；收手分數＝已排除的數字', () => {
+  const c = R.createSolo('crack', R.rngFrom(3), 40);
+  assert.strictEqual(c.secret, 40);
+  assert.strictEqual(R.soloGuess(c, 20).ev.result, 'low');      // 排除 1～20
+  assert.strictEqual(R.soloGuess(c, 70).ev.result, 'high');     // 排除 70～100
+  assert.deepStrictEqual([c.lo, c.hi], [21, 69]);
+  assert.strictEqual(R.soloGuess(c, 5).err, 'bad_guess', '已排除的數字不能猜');
+  const b = R.soloBank(c);
+  assert.ok(b.ok && c.banked && c.over);
+  assert.strictEqual(c.score, 100 - (69 - 21 + 1), '分數＝排除的數字數');
+  assert.strictEqual(c.score, 51);
+  assert.strictEqual(c.stars, 0, '51 分還不到 1 星（75）');
+  assert.strictEqual(R.soloGuess(c, 30).err, 'over', '收手後不能再猜');
+  const d = R.createSolo('crack', R.rngFrom(4), 50);
+  R.soloGuess(d, 20); R.soloGuess(d, 50);
+  assert.ok(d.over && d.hit && !d.banked); assert.strictEqual(d.score, 0, '猜中就爆炸、分數歸零');
+  assert.strictEqual(R.soloBank(d).err, 'over');
+  /* 只剩密碼時分數 99，滿 3 星 */
+  const e = R.createSolo('crack', R.rngFrom(5), 1);
+  e.lo = 1; e.hi = 1; R.soloBank(e);
+  assert.strictEqual(e.score, 99); assert.strictEqual(e.stars, 3);
+  assert.deepStrictEqual([74, 75, 90, 97].map(v => R.soloStars('crack', v)), [0, 1, 2, 3]);
 });
 
-test('單人踩點：地雷可走通、+3 一路會踩雷、步數星數、踩雷與超過失敗', () => {
-  for (let i = 0; i < 300; i++) {
-    const s = R.createStep(R.rngFrom('step' + i));
-    assert.strictEqual(s.mines.length, 5);
-    assert.ok(s.best >= 34 && s.best <= 40, '最少步數合理：' + s.best);
-    assert.ok(s.mines.every(m => m >= 2 && m <= 99));
-    assert.ok(s.mines.filter(m => m % 3 === 0).length >= 3);
-  }
-  const s = { kind: 'step', mines: [3, 6, 9, 12, 15], total: 0, steps: 0, best: R.minSteps([3, 6, 9, 12, 15]), path: [0], over: false };
-  assert.strictEqual(R.stepAdd(s, 3).ev.result, 'mine'); assert.strictEqual(s.fail, 'mine');
-  const t = { kind: 'step', mines: [50], total: 98, steps: 30, best: 34, path: [98], over: false };
-  assert.strictEqual(R.stepAdd(t, 3).ev.result, 'over');
-  const u = { kind: 'step', mines: [50], total: 97, steps: 33, best: 34, path: [97], over: false };
-  assert.strictEqual(R.stepAdd(u, 3).ev.result, 'goal'); assert.strictEqual(u.stars, 3);
-  assert.deepStrictEqual([34, 36, 37].map(n => R.stepStars(n, 34)), [3, 2, 1]);
-  assert.strictEqual(R.minSteps([97, 98, 99]), -1, '連 3 個地雷擋住就走不到');
+test('單人累加：一顆地雷、踩到或跨過就爆炸；收手分數＝目前數字；不能超過 100', () => {
+  const c = R.createSolo('step', R.rngFrom(6), 10);
+  R.soloAdd(c, 3); R.soloAdd(c, 3); R.soloAdd(c, 3);             // 9
+  assert.strictEqual(c.total, 9); assert.ok(!c.over);
+  const r = R.soloAdd(c, 3);                                       // 9 → 12 跨過 10
+  assert.strictEqual(r.ev.result, 'hit'); assert.strictEqual(r.ev.mineAt, 10);
+  assert.ok(c.hit && c.over); assert.strictEqual(c.score, 0);
+  const d = R.createSolo('step', R.rngFrom(7), 100);
+  for (let i = 0; i < 20; i++) R.soloAdd(d, 3);                    // 60
+  assert.strictEqual(d.total, 60);
+  assert.strictEqual(R.soloAdd(d, 4).err, 'bad_add');
+  R.soloBank(d);
+  assert.strictEqual(d.score, 60); assert.strictEqual(d.stars, 2);
+  const e = R.createSolo('step', R.rngFrom(8), 100); e.total = 99;
+  assert.strictEqual(R.soloAdd(e, 2).err, 'bad_add', '不能超過 100');
+  assert.deepStrictEqual([29, 30, 50, 70].map(v => R.soloStars('step', v)), [0, 1, 2, 3]);
+  for (let i = 0; i < 200; i++) { const k = R.createSolo(i % 2 ? 'step' : 'crack', R.rngFrom('s' + i)); assert.ok(k.secret >= 1 && k.secret <= 100); }
 });
 
 /* ---------- 設定 ---------- */

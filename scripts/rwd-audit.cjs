@@ -66,14 +66,15 @@ const SCENES = {
   help: async p => p.evaluate(() => App.show('help')),
   settings: async p => { await p.click('#btn-settings'); await p.waitForTimeout(250); },
   langMenu: async p => { await p.click('#btn-lang'); await p.waitForTimeout(150); },
-  crack: async p => { await p.evaluate(() => Solo.start({ kind: 'crack', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { GameView._pick(30); GameView._submit(); }); await p.waitForTimeout(150); await p.evaluate(() => { GameView._pick(70); GameView._submit(); }); await p.waitForTimeout(150); await p.evaluate(() => GameView._pick(50)); },
+  crack: async p => { await p.evaluate(() => Solo.start({ kind: 'crack', skipCountdown: true, secret: 50 })); await p.evaluate(() => { GameView._pick(30); GameView._submit(); }); await p.waitForTimeout(150); await p.evaluate(() => { GameView._pick(70); GameView._submit(); }); await p.waitForTimeout(150); await p.evaluate(() => GameView._pick(45)); },
   crackPad: async p => { await p.evaluate(() => Store.set('inputMode', 'pad')); await SCENES.crack(p); },
   crackHist: async p => { await SCENES.crack(p); await p.evaluate(() => GameView.showTab('hist')); },
   crackSide: async p => { await SCENES.crack(p); await p.evaluate(() => App.openSide()); await p.waitForTimeout(250); },
-  countdown: async p => { await p.evaluate(() => Solo.start({ kind: 'crack', seed: 'audit' })); await p.waitForTimeout(300); },
-  crackWin: async p => { await p.evaluate(() => Solo.start({ kind: 'crack', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { const s = Solo.active.st.secret; GameView._pick(s); GameView._submit(); }); await p.waitForTimeout(1500); },
-  step: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { GameView._add(2); GameView._add(2); }); },
-  stepLose: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { const m = Solo.active.st.mines[0]; let t = 0; while (m - t > 3) { const n = (m - t - 3 >= 1 && Solo.active.st.mines.indexOf(t + 3) < 0) ? 3 : (Solo.active.st.mines.indexOf(t + 2) < 0 ? 2 : 1); GameView._add(n); t = Solo.active.st.total; if (Solo.active.st.over) return; } GameView._add(m - t); }); await p.waitForTimeout(1800); },
+  countdown: async p => { await p.evaluate(() => Solo.start({ kind: 'crack', secret: 50 })); await p.waitForTimeout(300); },
+  crackWin: async p => { await SCENES.crack(p); await p.click('#k-bank'); await p.waitForTimeout(1300); },
+  step: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, secret: 100 })); await p.evaluate(() => { GameView._add(2); GameView._add(2); GameView._add(3); }); },
+  stepLose: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, secret: 10 })); await p.evaluate(() => { GameView._add(3); GameView._add(3); GameView._add(3); GameView._add(3); }); await p.waitForTimeout(2700); },
+  boom: async p => { await p.evaluate(() => Solo.start({ kind: 'crack', skipCountdown: true, secret: 33 })); await p.evaluate(() => { GameView._pick(33); GameView._submit(); }); await p.waitForTimeout(700); },
   lobby: async p => { await p.evaluate(() => OnlineUI.enterLobby()); await p.waitForTimeout(1000); },
   assignMenu: async p => { await createRoom(p, { mode: 'range', turnSec: 0, cap: 8 }); for (const n of ['第二位', 'Third player long name', '第四位玩家名字很長', 'Fifth']) await extra(p, n); await startOnline(p); await p.waitForTimeout(3200); const qs = p._ctx.map(c => c.pages()[0]); for (let k = 0; k < 6; k++) { if (await p.evaluate(() => OnlineUI.room.match.game.current === OnlineUI.room.you.seat)) break; await stepAll(qs, 1); } await p.click('[data-item="assign"]'); await p.waitForTimeout(250); },
   share: async p => { await SCENES.crackWin(p); await p.click('.result-share-trigger'); await p.waitForSelector('.result-share-image', { timeout: 15000 }); await p.waitForTimeout(300); },
@@ -124,7 +125,7 @@ async function check(p, view) {
         const cx = Math.min(vw - 1, Math.max(0, r.left + r.width / 2)), cy = Math.min(vh - 1, Math.max(0, r.top + r.height / 2));
         const top = document.elementFromPoint(cx, cy);
         if (top && !el.contains(top) && !top.closest('.sb-track, .toasts')) {
-          const lay = n => n.closest('.modal-mask, .result-layer, .countdown, .menu-pop, .side, .side-backdrop, .result-share-dialog-layer, .server-outage-mask');
+          const lay = n => n.closest('.modal-mask, .result-layer, .countdown, .menu-pop, .side, .side-backdrop, .result-share-dialog-layer, .server-outage-mask, .boom-layer');
           const name = (el.textContent || el.id || '').trim().slice(0, 20);
           if (top.closest('.lc-root') && !lay(el)) issues.push('被大廳聊天遮住：' + name);
           else if (lay(el) === lay(top) && !top.closest('.lc-root')) issues.push('操作被遮住：' + name + ' ← ' + (String(top.className) || top.tagName));

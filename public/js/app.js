@@ -118,17 +118,16 @@
   function starsHtml(n) { var h = '<span class="mini-stars" aria-label="' + esc(t('res.starsAria', { n: n })) + '">'; for (var i = 0; i < 3; i++) h += '<i class="' + (i < n ? 'on' : '') + '">' + K.icon(i < n ? 'star' : 'star-empty') + '</i>'; return h + '</span>'; }
   function renderSolo() {
     var s = Store.get('stats');
-    var crackBest = s.crack.best ? R().crackStars(s.crack.best) : 0;
+    function best(kind) { var b = s[kind].best; return b ? starsHtml(R().soloStars(kind, b)) + esc(t('solo.bestScore', { n: b })) : esc(t('solo.noRecord')); }
     $('scr-solo').innerHTML = '<div class="page"><h1 class="page-title">' + esc(t('title.solo')) + '</h1><div class="mode-grid">' +
       '<button type="button" class="mode-card mc-crack" data-m="crack"><span class="mc-ico">' + K.icon('safe') + '</span><span class="mc-text"><b>' + esc(t('mode.crack')) + '</b><small>' + esc(t('mode.crackDesc')) + '</small>' +
-      '<span class="mc-best">' + (s.crack.best ? starsHtml(crackBest) + esc(t('solo.bestGuess', { n: s.crack.best })) : esc(t('solo.noRecord'))) + '</span></span></button>' +
-      '<button type="button" class="mode-card mc-step" data-m="step"><span class="mc-ico">' + K.icon('target') + '</span><span class="mc-text"><b>' + esc(t('mode.step')) + '</b><small>' + esc(t('mode.stepDesc')) + '</small>' +
-      '<span class="mc-best">' + (s.step.best ? esc(t('solo.bestStep', { n: s.step.best })) : esc(t('solo.noRecord'))) + '</span></span></button>' +
+      '<span class="mc-best">' + best('crack') + '</span></span></button>' +
+      '<button type="button" class="mode-card mc-step" data-m="step"><span class="mc-ico">' + K.icon('mine') + '</span><span class="mc-text"><b>' + esc(t('mode.step')) + '</b><small>' + esc(t('mode.stepDesc')) + '</small>' +
+      '<span class="mc-best">' + best('step') + '</span></span></button>' +
       '</div>' +
-      '<div class="panel solo-opts"><div class="set-row"><label class="set-label" for="so-hint">' + esc(t('sum.hint')) + '<small>' + esc(t('solo.hintHelp')) + '</small></label>' + K.switchHtml('so-hint', Store.get('showRange') !== false, t('sum.hint')) + '</div>' +
+      '<div class="panel solo-opts"><p class="note">' + K.icon('flag') + '<span>' + esc(t('solo.bankNote')) + '</span></p>' +
       '<p class="note">' + K.icon('question') + '<span>' + esc(t('solo.noItems')) + '</span></p></div></div>';
     $('scr-solo').querySelectorAll('[data-m]').forEach(function (b) { b.addEventListener('click', function () { root.Solo.start({ kind: b.getAttribute('data-m') }); }); });
-    K.bindSwitch($('so-hint'), function (v) { Store.set('showRange', v); });
   }
   function R() { return root.UCRules; }
 
@@ -137,12 +136,12 @@
     var s = Store.get('stats'), ach = Store.get('ach'), recs = Store.get('records').slice().reverse();
     var lang = root.I18N.lang === 'en' ? 'en-US' : root.I18N.lang === 'zh-Hans' ? 'zh-CN' : 'zh-TW';
     function when(ms) { try { return new Date(ms).toLocaleString(lang, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
-    var avg = s.crack.wins ? (s.crack.sum / s.crack.wins).toFixed(1) : '—';
+    function avg(k) { return s[k].wins ? (s[k].sum / s[k].wins).toFixed(1) : '—'; }
     var html = '<div class="page records"><h1 class="page-title">' + esc(t('title.records')) + '</h1>' +
       '<section class="panel"><h2 class="box-title">' + K.icon('safe') + esc(t('mode.crack')) + '</h2><div class="stat-grid">' +
-      stat(t('rec.games'), s.crack.games) + stat(t('rec.best'), s.crack.best || '—') + stat(t('rec.avg'), avg) + stat(t('rec.stars3'), s.crack.stars3) + '</div></section>' +
-      '<section class="panel"><h2 class="box-title">' + K.icon('target') + esc(t('mode.step')) + '</h2><div class="stat-grid">' +
-      stat(t('rec.games'), s.step.games) + stat(t('rec.clears'), s.step.wins) + stat(t('rec.bestStep'), s.step.best || '—') + stat(t('rec.stars3'), s.step.stars3) + '</div></section>' +
+      stat(t('rec.games'), s.crack.games) + stat(t('rec.banked'), s.crack.wins) + stat(t('rec.bestScore'), s.crack.best || '—') + stat(t('rec.avgScore'), avg('crack')) + stat(t('rec.stars3'), s.crack.stars3) + '</div></section>' +
+      '<section class="panel"><h2 class="box-title">' + K.icon('mine') + esc(t('mode.step')) + '</h2><div class="stat-grid">' +
+      stat(t('rec.games'), s.step.games) + stat(t('rec.banked'), s.step.wins) + stat(t('rec.bestScore'), s.step.best || '—') + stat(t('rec.avgScore'), avg('step')) + stat(t('rec.stars3'), s.step.stars3) + '</div></section>' +
       '<section class="panel"><h2 class="box-title">' + K.icon('users') + esc(t('rec.online')) + '</h2><div class="stat-grid">' +
       stat(t('rec.games'), s.online.games) + stat(t('rec.wins'), s.online.wins) + stat(t('rec.hits'), s.online.hits) + '</div></section>' +
       '<section class="panel"><h2 class="box-title">' + K.icon('medal') + esc(t('rec.ach')) + '<small>' + esc(t('rec.achN', { a: Object.keys(ach).length, b: Store.ACH.length })) + '</small></h2><ul class="ach-list">' +
@@ -155,8 +154,8 @@
       '<section class="panel"><h2 class="box-title">' + K.icon('history') + esc(t('rec.recent')) + '<small>' + esc(t('rec.keep', { n: Store.KEEP })) + '</small></h2>' +
       (recs.length ? '<ol class="rec-list">' + recs.slice(0, 30).map(function (r) {
         var res = r.result === 'win' ? t('rec.rWin') : r.result === 'draw' ? t('rec.rDraw') : r.result === 'left' ? t('rec.rLeft') : t('rec.rLose');
-        var metric = r.kind === 'crack' ? t('rec.mGuess', { n: r.metric }) : r.kind === 'step' ? (r.result === 'win' ? t('rec.mStep', { n: r.metric }) : '') : t('rec.mHits', { n: r.metric });
-        return '<li class="rec r-' + r.result + '"><span class="rec-kind">' + K.icon(r.kind === 'crack' ? 'safe' : r.kind === 'step' ? 'target' : 'users') + esc(t('rec.k.' + r.kind)) + '</span>' +
+        var metric = r.kind === 'online' ? t('rec.mHits', { n: r.metric }) : r.result === 'win' ? t('rec.mScore', { n: r.metric }) : t('rec.mBoom');
+        return '<li class="rec r-' + r.result + '"><span class="rec-kind">' + K.icon(r.kind === 'crack' ? 'safe' : r.kind === 'step' ? 'mine' : 'users') + esc(t('rec.k.' + r.kind)) + '</span>' +
           '<b>' + esc(res) + '</b><span>' + esc(metric) + (r.stars ? ' ' : '') + '</span>' + (r.stars ? starsHtml(r.stars) : '<span></span>') + '<small>' + esc(when(r.at)) + '</small></li>';
       }).join('') + '</ol>' : '<p class="empty">' + esc(t('rec.empty')) + '</p>') + '</section>' +
       '<p class="note">' + K.icon('question') + '<span>' + esc(t('rec.local')) + '</span></p>' +

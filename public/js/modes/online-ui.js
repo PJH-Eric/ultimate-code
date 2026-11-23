@@ -494,7 +494,11 @@
     if (g.history.length > lastHistLen) {
       var h = g.history[g.history.length - 1];
       if (lastHistLen) {
-        if (h.result === 'hit') { root.Sound.play('boom'); root.Sound.vibrate(200); }
+        if (h.result === 'hit') {
+          /* 有人踩中：全螢幕爆炸（音效與震動在 explode 裡） */
+          var who = h.seat === me ? t('game.you') : nameOf(h.seat);
+          root.GameView.explode(h.kind === 'add' ? t('boom.mineBy', { n: who, m: h.mineAt }) : t('boom.secretBy', { n: who, m: h.value }));
+        }
         else if (h.kind === 'item') root.Sound.play('item');
         else root.Sound.play('shrink');
       }
@@ -520,7 +524,8 @@
     var recorded = null;
     if (participant) recorded = root.Store.recordMatch({ id: 'online-' + room.id + '-' + mt.no + '-' + (room.you.id || ''), kind: 'online', mode: room.settings.mode, result: outcome === 'spec' ? 'left' : outcome, metric: mt.hits[me] || 0, hits: mt.hits[me] || 0 });
     var no = mt.no;
-    setTimeout(function () {
+    /* 等爆炸畫面播完才顯示結算 */
+    (function waitBoom(fn) { if (root.GameView.booming()) setTimeout(function () { waitBoom(fn); }, 150); else setTimeout(fn, 500); })(function () {
       if (!room || !room.match || room.match.no !== no || room.status !== 'finished') return;
       root.Result.show(function () {
         var m = room && room.match && room.match.no === no ? room.match : mt;
@@ -544,7 +549,7 @@
         if (recorded && recorded.unlocked) recorded.unlocked.forEach(function (id) { o.badges.push({ icon: (root.Store.ACH.find(function (x) { return x.id === id; }) || {}).icon, text: t('ach.unlocked', { name: t('ach.' + id) }) }); });
         return o;
       });
-    }, 1300);
+    });
   }
   /** 再來一局投票：在座玩家全部投票就自動開下一場；再按一次取消 */
   function rematchVotes() {

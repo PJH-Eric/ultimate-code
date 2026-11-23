@@ -72,7 +72,7 @@
     box.innerHTML = '<span class="gt-text">' + (vm.myTurn ? K.icon('hand-raise') : '') + '<b>' + esc(vm.turnText || '') + '</b></span>' +
       (vm.counter ? '<span class="gt-counter">' + esc(vm.counter) + '</span>' : '') +
       (showDir ? '<span class="gt-dir" title="' + esc(t(vm.dir === -1 ? 'game.dirBack' : 'game.dirFwd')) + '">' + K.icon(dirIco) + '</span>' : '') +
-      (vm.deadline ? '<span class="gt-timer" role="timer"><span class="gt-bar"><i></i></span><b class="gt-sec">' + K.fmtTime(Math.max(0, vm.deadline - Date.now())) + '</b></span>' : '');
+      (vm.deadline ? '<span class="gt-timer" role="timer"><i class="gt-bomb" aria-hidden="true">' + K.icon('mine') + '</i><span class="gt-bar"><i></i></span><b class="gt-sec">' + K.fmtTime(Math.max(0, vm.deadline - Date.now())) + '</b></span>' : '');
     startTimer();
   }
   function startTimer() {
@@ -153,7 +153,7 @@
       '<div class="in-toggle seg" role="radiogroup" aria-label="' + esc(t('set.inputMode')) + '">' +
       '<button type="button" role="radio" class="seg-btn" data-im="grid" aria-checked="' + (mode === 'grid') + '" title="' + esc(t('im.grid')) + '" aria-label="' + esc(t('im.grid')) + '">' + K.icon('grid') + '</button>' +
       '<button type="button" role="radio" class="seg-btn" data-im="pad" aria-checked="' + (mode === 'pad') + '" title="' + esc(t('im.pad')) + '" aria-label="' + esc(t('im.pad')) + '">' + K.icon('keypad') + '</button></div>' +
-      '<button type="button" class="btn primary submit" id="k-submit"' + (vm.canAct && selOk ? '' : ' disabled') + '>' + K.icon(vm.setMode ? 'lock' : 'enter') + '<span>' + esc(vm.submitLabel || t('game.submit')) + '</span></button></div>';
+      '<button type="button" class="btn primary submit" id="k-submit"' + (vm.canAct && selOk ? '' : ' disabled') + '>' + K.icon(vm.setMode ? 'lock' : 'enter') + '<span>' + esc(vm.submitLabel || t('game.submit')) + '</span></button></div>' + bankBlock();
     html += itemsBlock();
     return html + '</div>';
   }
@@ -189,11 +189,20 @@
       var to = total + n;
       var ok = vm.canAct && (step || to <= 100);
       var danger = step ? (mines[to] || to > 100) : (vm.secret != null && total < vm.secret && vm.secret <= to);
-      return '<button type="button" class="step-big' + (danger ? ' danger' : '') + '" data-add="' + n + '"' + (ok ? '' : ' disabled') + ' aria-label="' + esc(t('game.addAria', { n: n, to: to })) + '">' +
-        '<b>+' + n + '</b><small>' + esc(t('game.toN', { n: to })) + '</small></button>';
+      var on = [];
+      for (var k = total + 1; k <= Math.min(to, 100); k++) on.push(k);
+      return '<button type="button" class="step-big' + (danger ? ' danger' : '') + '" data-add="' + n + '"' + (ok ? '' : ' disabled') + ' aria-label="' + esc(t('game.addAriaOn', { n: n, list: on.join('、') || '—' })) + '">' +
+        '<b>+' + n + '</b><small class="step-on">' + (on.length ? '<span class="lbl">' + esc(t('game.stepOn')) + '</span>' + on.map(function (v) { return '<i>' + v + '</i>'; }).join('') : '—') + '</small></button>';
     }).join('') + '</div>';
+    html += bankBlock();
     html += itemsBlock();
     return html + '</div>';
+  }
+  /** 單人「收手」：結束並以目前分數計分 */
+  function bankBlock() {
+    if (vm.kind !== 'solo') return '';
+    return '<button type="button" class="btn bank-btn" id="k-bank"' + (vm.bankable ? '' : ' disabled') + ' title="' + esc(t('game.bankHelp')) + '">' +
+      K.icon('flag') + '<span>' + esc(t('game.bank', { n: vm.bankScore || 0 })) + '</span></button>';
   }
 
   var guessedSet = {};
@@ -294,6 +303,7 @@
     else if (b.id === 'k-submit') submit();
     else if (b.hasAttribute('data-k')) { var k = b.getAttribute('data-k'); if (k === 'bs') backspace(); else if (k === 'clr') clearSel(); else typeDigit(k); }
     else if (b.hasAttribute('data-add')) addN(Number(b.getAttribute('data-add')));
+    else if (b.id === 'k-bank') { if (H.bank) H.bank(); }
     else if (b.hasAttribute('data-item')) useItem(b);
     else if (b.hasAttribute('data-im')) { root.Store.set('inputMode', b.getAttribute('data-im')); root.Sound.play('key'); renderBoard(); var f = $('g-board').querySelector('[data-im="' + b.getAttribute('data-im') + '"]'); if (f) f.focus({ preventScroll: true }); }
   }
@@ -348,6 +358,28 @@
     step();
     if (goAt - Date.now() > 0) cdTimer = setInterval(step, 50);
   }
+  var boomTimer = null;
+  function explode(label, done) {
+    clearBoom();
+    var reduce = root.document.getElementById('app').classList.contains('reduce-motion');
+    var el = root.document.createElement('div');
+    el.className = 'boom-layer' + (reduce ? ' calm' : '');
+    el.id = 'boom-layer';
+    el.setAttribute('role', 'alert');
+    el.innerHTML = '<div class="boom-burst" aria-hidden="true"><i class="boom-ring"></i><i class="boom-ring r2"></i>' +
+      [0, 1, 2, 3, 4, 5, 6, 7].map(function (i) { return '<i class="boom-spark" style="--a:' + (i * 45) + 'deg"></i>'; }).join('') +
+      '<span class="boom-bomb">' + K.icon('mine') + '</span></div><p class="boom-text">' + esc(label || t('boom.mine', { n: '' })) + '</p>';
+    root.document.body.appendChild(el);
+    root.document.body.classList.add('booming');
+    root.Sound.play('boom'); root.Sound.vibrate([120, 60, 200]);
+    boomTimer = setTimeout(function () { clearBoom(); if (done) done(); }, reduce ? 900 : 1700);
+  }
+  function clearBoom() {
+    clearTimeout(boomTimer); boomTimer = null;
+    var el = root.document.getElementById('boom-layer'); if (el) el.remove();
+    root.document.body.classList.remove('booming');
+  }
+  function booming() { return !!boomTimer; }
   function hideCountdown() { clearInterval(cdTimer); cdTimer = null; var el = $('countdown'); if (el) { el.hidden = true; el.classList.remove('go'); } }
   function counting() { return !!cdTimer; }
 
@@ -394,7 +426,8 @@
   }
   /** 新的一局：清掉選取與紀錄未讀、回到遊戲分頁 */
   function reset() { sel = null; typed = ''; histSeen = 0; vm = null; showTab('play'); clearInterval(timer); timer = null; }
-  function stop() { clearInterval(timer); timer = null; hideCountdown(); vm = null; H = {}; }
+  function stop() { clearBoom(); stopInner(); }
+  function stopInner() { clearInterval(timer); timer = null; hideCountdown(); vm = null; H = {}; }
 
   function init() {
     K = root.Kit;
@@ -409,7 +442,7 @@
 
   root.GameView = {
     init: init, render: render, reset: reset, stop: stop, showTab: showTab, countdown: countdown, hideCountdown: hideCountdown, counting: counting,
-    dial: dial, avatar: avatar, hostSvg: hostSvg, teamMark: teamMark, histLine: histLine,
+    dial: dial, avatar: avatar, hostSvg: hostSvg, teamMark: teamMark, histLine: histLine, explode: explode, booming: booming,
     get vm() { return vm; }, _pick: pick, _submit: submit, _add: addN
   };
 })(typeof self !== 'undefined' ? self : this);

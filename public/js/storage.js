@@ -5,7 +5,7 @@
 (function (root) {
   'use strict';
   var KEY = 'ultimate-code:v1';
-  var SCHEMA = 1;
+  var SCHEMA = 2;                // v2（2026-11-23）：單人改為收手計分，單人戰績與成就格式不同
   var KEEP = 100;                 // 對局明細最多保留 100 局
   var DEFAULTS = {
     ver: SCHEMA,
@@ -19,7 +19,7 @@
     seen: {},                     // 已結算的 matchId（去重，不隨明細清理）
     stats: {
       crack: { games: 0, wins: 0, best: 0, sum: 0, stars3: 0 },
-      step: { games: 0, wins: 0, fails: 0, best: 0, stars3: 0 },
+      step: { games: 0, wins: 0, best: 0, sum: 0, stars3: 0 },
       online: { games: 0, wins: 0, hits: 0 }
     },
     ach: {}                       // achievementId → unlockedAt（ms）
@@ -44,6 +44,12 @@
     });
     data.records = data.records.filter(function (r) { return r && typeof r === 'object' && typeof r.id === 'string'; }).slice(-KEEP);
     if (!data.profileId) data.profileId = 'u' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    if (raw.ver !== SCHEMA && raw.ver != null) {
+      /* v1 單人是「次數越少越好」的破解／踩點，v2 是收手分數（越高越好）：單人戰績、紀錄與成就重置，線上戰績保留 */
+      data.stats.crack = clone(DEFAULTS.stats.crack); data.stats.step = clone(DEFAULTS.stats.step);
+      data.records = data.records.filter(function (r) { return r.kind === 'online'; });
+      Object.keys(data.ach).forEach(function (id) { if (/^(crack|step)_/.test(id)) delete data.ach[id]; });
+    }
     data.ver = SCHEMA;
     return data;
   }
@@ -73,11 +79,11 @@
 
   /* ---------- 成就定義（穩定 id、門檻與計入模式） ---------- */
   var ACH = [
-    { id: 'crack_first', icon: 'key', test: function (s) { return s.crack.wins >= 1; } },
+    { id: 'crack_bank', icon: 'flag', test: function (s) { return s.crack.wins >= 1; } },
     { id: 'crack_3star', icon: 'star', test: function (s) { return s.crack.stars3 >= 1; } },
-    { id: 'crack_lucky', icon: 'dice', test: function (s, r) { return r && r.kind === 'crack' && r.result === 'win' && r.metric <= 3; } },
-    { id: 'step_first', icon: 'target', test: function (s) { return s.step.wins >= 1; } },
-    { id: 'step_perfect', icon: 'trophy', test: function (s) { return s.step.stars3 >= 1; } },
+    { id: 'crack_max', icon: 'safe', test: function (s, r) { return !!(r && r.kind === 'crack' && r.result === 'win' && r.metric >= 99); } },
+    { id: 'step_bank', icon: 'target', test: function (s) { return s.step.wins >= 1; } },
+    { id: 'step_3star', icon: 'trophy', test: function (s) { return s.step.stars3 >= 1; } },
     { id: 'online_first', icon: 'users', test: function (s) { return s.online.games >= 1; } },
     { id: 'online_survivor', icon: 'crown', test: function (s) { return s.online.wins >= 5; }, goal: 5, prog: function (s) { return s.online.wins; } },
     { id: 'games_10', icon: 'medal', test: function (s) { return s.crack.games + s.step.games + s.online.games >= 10; }, goal: 10, prog: function (s) { return s.crack.games + s.step.games + s.online.games; } }
@@ -95,20 +101,15 @@
     var keys = Object.keys(d.seen);
     if (keys.length > 2000) keys.sort(function (a, b) { return d.seen[a] - d.seen[b]; }).slice(0, keys.length - 2000).forEach(function (k) { delete d.seen[k]; });
     var s = d.stats, best = false;
-    if (r.kind === 'crack') {
-      s.crack.games++;
+    if (r.kind === 'crack' || r.kind === 'step') {
+      /* 單人：收手（win）才計分；分數越高越好；踩中（lose）只算局數 */
+      var k = s[r.kind];
+      k.games++;
       if (r.result === 'win') {
-        s.crack.wins++; s.crack.sum += r.metric;
-        if (!s.crack.best || r.metric < s.crack.best) { best = true; s.crack.best = r.metric; }
-        if (r.stars === 3) s.crack.stars3++;
+        k.wins++; k.sum += r.metric || 0;
+        if ((r.metric || 0) > (k.best || 0)) { best = true; k.best = r.metric; }
+        if (r.stars === 3) k.stars3++;
       }
-    } else if (r.kind === 'step') {
-      s.step.games++;
-      if (r.result === 'win') {
-        s.step.wins++;
-        if (!s.step.best || r.metric < s.step.best) { best = true; s.step.best = r.metric; }
-        if (r.stars === 3) s.step.stars3++;
-      } else s.step.fails++;
     } else if (r.kind === 'online') {
       s.online.games++;
       if (r.result === 'win' || r.result === 'draw') s.online.wins++;
