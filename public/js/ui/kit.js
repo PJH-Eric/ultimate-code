@@ -96,6 +96,8 @@
     }
     doc.addEventListener('keydown', onKey, true);
     var x = mask.querySelector('.modal-x'); if (x) x.addEventListener('click', close);
+    /* 彈窗進場動畫結束後重算自訂捲軸（動畫途中量到的位置是錯的） */
+    dlg.addEventListener('animationend', schedule);
     if (o.dismissable !== false) mask.addEventListener('pointerdown', function (e) { if (e.target === mask) close(); });
     var api = { el: mask, body: body, close: close };
     stack.push(api);

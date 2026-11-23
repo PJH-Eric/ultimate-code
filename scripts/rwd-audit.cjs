@@ -142,7 +142,7 @@ async function check(p, view) {
       if (mid && !el.contains(mid) && !mid.closest('.sb-track')) return;   // 被更上層的彈窗蓋住，不算
       const x = Math.min(vw - 1, r.right - 5), y = Math.min(vh - 1, Math.max(0, r.top + Math.min(r.height, vh - r.top) / 2));
       const hit = document.elementFromPoint(x, y);
-      if (!hit || !hit.closest('.sb-track')) issues.push('捲軸看不到：' + (el.id || String(el.className).split(' ')[0]));
+      if (!hit || !hit.closest('.sb-track')) issues.push('捲軸看不到：' + (el.id || String(el.className).split(' ')[0]) + ' ← 被 ' + (hit ? (hit.id || String(hit.className).slice(0, 40) || hit.tagName) : 'null') + ' 蓋住');
     });
     /* 捲到底：最後一個子元素要能完整進到可視範圍 */
     document.querySelectorAll('.scroll').forEach(el => {

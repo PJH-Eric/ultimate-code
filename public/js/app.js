@@ -276,6 +276,8 @@
     $('btn-back').addEventListener('click', goBack);
     $('btn-side').addEventListener('click', function () { if ($('app').getAttribute('data-side') === 'open') closeSide(); else openSide(); });
     $('side-close').addEventListener('click', closeSide);
+    /* 抽屜滑動結束後重算自訂捲軸位置（滑動途中量到的位置是錯的） */
+    $('side').addEventListener('transitionend', function () { K.refreshScroll(); });
     $('side-backdrop').addEventListener('click', closeSide);
     doc.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || K.Modal.top() || doc.querySelector('.menu-pop') || doc.querySelector('.result-share-dialog-layer:not([hidden])')) return;
