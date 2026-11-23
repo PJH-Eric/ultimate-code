@@ -75,6 +75,7 @@ const SCENES = {
   step: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { GameView._add(2); GameView._add(2); }); },
   stepLose: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { const m = Solo.active.st.mines[0]; let t = 0; while (m - t > 3) { const n = (m - t - 3 >= 1 && Solo.active.st.mines.indexOf(t + 3) < 0) ? 3 : (Solo.active.st.mines.indexOf(t + 2) < 0 ? 2 : 1); GameView._add(n); t = Solo.active.st.total; if (Solo.active.st.over) return; } GameView._add(m - t); }); await p.waitForTimeout(1800); },
   lobby: async p => { await p.evaluate(() => OnlineUI.enterLobby()); await p.waitForTimeout(1000); },
+  assignMenu: async p => { await createRoom(p, { mode: 'range', turnSec: 0, cap: 8 }); for (const n of ['第二位', 'Third player long name', '第四位玩家名字很長', 'Fifth']) await extra(p, n); await startOnline(p); await p.waitForTimeout(3200); const qs = p._ctx.map(c => c.pages()[0]); for (let k = 0; k < 6; k++) { if (await p.evaluate(() => OnlineUI.room.match.game.current === OnlineUI.room.you.seat)) break; await stepAll(qs, 1); } await p.click('[data-item="assign"]'); await p.waitForTimeout(250); },
   share: async p => { await SCENES.crackWin(p); await p.click('.result-share-trigger'); await p.waitForSelector('.result-share-image', { timeout: 15000 }); await p.waitForTimeout(300); },
   lobbyRooms: async p => {
     for (let i = 0; i < 4; i++) { const ctx = await BROWSER.newContext(); const q = await ctx.newPage(); await q.goto(BASE); await q.waitForTimeout(200); await q.evaluate(() => OnlineUI.enterLobby()); await q.waitForTimeout(600); await q.evaluate(i => Net.send({ type: 'create', name: ['小明', 'A very long English nickname', '房主三號名字很長很長', 'Dee'][i], settings: { mode: i % 2 ? 'count' : 'range', teams: i === 2, rounds: [1, 3, 5, 1][i], turnSec: [0, 15, 30, 60][i] } }), i); (p._ctx = p._ctx || []).push(ctx); }
@@ -142,6 +143,14 @@ async function check(p, view) {
       const x = Math.min(vw - 1, r.right - 5), y = Math.min(vh - 1, Math.max(0, r.top + Math.min(r.height, vh - r.top) / 2));
       const hit = document.elementFromPoint(x, y);
       if (!hit || !hit.closest('.sb-track')) issues.push('捲軸看不到：' + (el.id || String(el.className).split(' ')[0]));
+    });
+    /* 捲到底：最後一個子元素要能完整進到可視範圍 */
+    document.querySelectorAll('.scroll').forEach(el => {
+      if (!visible(el) || el.scrollHeight <= el.clientHeight + 2 || el.closest('[inert]')) return;
+      const keep = el.scrollTop; el.scrollTop = el.scrollHeight;
+      const last = el.lastElementChild; const er = el.getBoundingClientRect();
+      if (last && visible(last)) { const lr = last.getBoundingClientRect(); if (lr.bottom > Math.min(er.bottom, vh) + 2) issues.push('捲不到底：' + (el.id || String(el.className).split(' ')[0])); }
+      el.scrollTop = keep;
     });
     /* 彈窗塞得下 */
     document.querySelectorAll('.modal, .result-card, .menu-pop').forEach(m => { if (!visible(m)) return; const r = m.getBoundingClientRect(); if (r.bottom > vh + 1 || r.top < -1 || r.right > vw + 1 || r.left < -1) issues.push('彈窗超出畫面：' + m.className); });

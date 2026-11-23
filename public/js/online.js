@@ -95,5 +95,15 @@
     stopTimers() { clearInterval(this.pingTimer); clearInterval(this.watchTimer); this.pingTimer = this.watchTimer = null; },
     close() { this.wantOn = false; this.stopTimers(); if (this.ws) { try { this.ws.close(); } catch (e) { /* ignore */ } } this.ws = null; this.setStatus('closed'); root.Latency.off(); }
   };
+  function resumeNow() {
+    if (!Net.wantOn) return;
+    if (Net.ws && Net.ws.readyState === 1 && Date.now() - Net.lastMsgAt > 9000) { try { Net.ws.close(); } catch (e) { /* ignore */ } return; }
+    if (!Net.ws && (Net.status === 'retrying' || Net.status === 'failed')) { Net.retry = 0; Net.open(); }
+  }
+  if (root.addEventListener) {
+    root.addEventListener('online', resumeNow);
+    root.addEventListener('pageshow', resumeNow);
+    if (root.document) root.document.addEventListener('visibilitychange', function () { if (!root.document.hidden) resumeNow(); });
+  }
   root.Net = Net;
 })(typeof self !== 'undefined' ? self : this);

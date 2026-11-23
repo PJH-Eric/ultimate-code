@@ -428,4 +428,34 @@ test('聊天過濾：不雅字詞換成＊、暱稱也過濾、控制字元與�
   assert.strictEqual(env.last(ps[1], 'chat').msg.text, '一');
 });
 
+test('再來一局投票：全員投票自動開下一場；可取消；有人離開清空投票；觀戰不能投', () => {
+  const env = setup();
+  const { ps, id, r } = table(env, 3, { mode: 'count', turnSec: 0 });
+  const s = env.P('看戲');
+  env.hub.join(s, { roomId: id, name: '看戲', want: 'spectator' });
+  env.hub.rematch(ps[0], true);
+  assert.ok(!r().seats[0].rematch, '對局前不能投');
+  env.hub.start(ps[0]); env.adv(3001);
+  const g = r().match.game; g.total = 99;
+  env.hub.act(ps.find(p => r().seats[g.order[g.pos]].id === p.id), { kind: 'add', value: 1 });
+  assert.strictEqual(r().status, 'finished');
+  env.hub.rematch(s, true);
+  assert.deepStrictEqual(env.errs(s).slice(-1), ['not_player']);
+  env.hub.rematch(ps[1], true); env.hub.rematch(ps[2], true);
+  assert.strictEqual(env.room(ps[0]).seats.filter(x => x && x.rematch).length, 2, '快照看得到票數');
+  env.hub.rematch(ps[2], false);
+  assert.strictEqual(r().seats.filter(x => x && x.rematch).length, 1, '可以取消');
+  env.hub.rematch(ps[2], true);
+  env.hub.rematch(ps[0], true);
+  assert.strictEqual(r().status, 'playing', '全員投票自動開');
+  assert.strictEqual(r().matchNo, 2);
+  assert.ok(r().seats.every(x => !x || !x.rematch), '開局後清空投票');
+  /* 有人離開清空投票 */
+  env.adv(3001); const g2 = r().match.game; g2.total = 99;
+  env.hub.act(ps.find(p => r().seats[g2.order[g2.pos]].id === p.id), { kind: 'add', value: 1 });
+  env.hub.rematch(ps[0], true); env.hub.rematch(ps[1], true);
+  env.hub.leave(ps[2].id);
+  assert.ok(r().seats.every(x => !x || !x.rematch), '有人離開清空投票');
+});
+
 console.log('房間測試全部通過：' + passed + ' 項');

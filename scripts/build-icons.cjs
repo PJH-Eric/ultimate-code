@@ -22,5 +22,24 @@ const svg = fs.readFileSync(path.join(pub, 'favicon.svg'), 'utf8');
   await render('apple-touch-icon.png', 180, 18, '#FFF4E0');
   await render('icons/icon-192.png', 192, 22, '#FFF4E0');
   await render('icons/icon-512.png', 512, 60, '#FFF4E0');
+  /* favicon.ico：16／32／48 三種尺寸，ICO 裡直接放 PNG 資料 */
+  const pngs = [];
+  for (const s of [16, 32, 48]) {
+    await page.setViewportSize({ width: s, height: s });
+    await page.setContent('<html><body style="margin:0">' + svg.replace('<svg ', '<svg width="' + s + '" height="' + s + '" ') + '</body></html>');
+    pngs.push({ s, buf: await page.screenshot({ omitBackground: true }) });
+  }
+  const head = Buffer.alloc(6 + 16 * pngs.length);
+  head.writeUInt16LE(0, 0); head.writeUInt16LE(1, 2); head.writeUInt16LE(pngs.length, 4);
+  let off = head.length;
+  pngs.forEach((p, i) => {
+    const e = 6 + i * 16;
+    head[e] = p.s; head[e + 1] = p.s; head[e + 2] = 0; head[e + 3] = 0;
+    head.writeUInt16LE(1, e + 4); head.writeUInt16LE(32, e + 6);
+    head.writeUInt32LE(p.buf.length, e + 8); head.writeUInt32LE(off, e + 12);
+    off += p.buf.length;
+  });
+  fs.writeFileSync(path.join(pub, 'favicon.ico'), Buffer.concat([head, ...pngs.map(p => p.buf)]));
+  console.log('✓ favicon.ico（16/32/48）');
   await browser.close();
 })();

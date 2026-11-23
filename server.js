@@ -2,13 +2,14 @@
  * 靜態檔案用 Node 內建 http，連線用 lib/ws.js（自己寫的原生 WebSocket），不需要 npm install。
  *
  *   lib/rooms.js       房間／席位／觀戰／邀請／聊天／對局（純邏輯）
- *   lib/room-store.js  房間快照（node:sqlite）；設定 UC_ROOM_DB_PATH 才啟用，供 Oracle 站點重啟復原
+ *   lib/room-store.js  房間快照（node:sqlite）；設定 UC_ROOM_DB_PATH 才啟用（有持久磁碟的主機才用得到）
  *   lib/lobby-chat.js  大廳聊天室
  *   這一支              HTTP、WebSocket、身分（同一個瀏覽器分頁斷線重連是同一個人）、心跳與計時
  *
- * 三級備援（Oracle → Render → Cloudflare）：前端記住房號與後端，重連時在 hello 帶 resumeRoomId；
- * 伺服器依 clientId 認出原玩家並送回房間，房間不存在時回 resume_fail。房間快照載入完成才開始 listen，
- * 所以 /health 可用時一定已經復原好。
+ * 備援（Render → Cloudflare）：同一份程式也會被 game-lobby/cloudflare/build.cjs 包進 Cloudflare Durable Object。
+ * 在那裡執行時，外層會傳入 runtime（http／ws／只在有人連線時才跑的計時器，以及可選的 roomStore），
+ * 這裡偵測到就改用它，所以 game-lobby 不需要為這款遊戲寫特例。
+ * 前端記住房號與後端，重連時在 hello 帶 resumeRoomId；伺服器依 clientId 認出原玩家並送回房間，房間不存在時回 resume_fail。
  */
 'use strict';
 
@@ -18,7 +19,9 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
-const ws = require('./lib/ws.js');
+/* Cloudflare 備援：factory 包裝時 runtime 是外層函式參數；Node 直接執行時不存在 */
+const RT = typeof runtime !== 'undefined' ? runtime : null;   // eslint-disable-line no-undef
+const ws = RT && RT.ws ? RT.ws : require('./lib/ws.js');
 const { createHub, cleanName } = require('./lib/rooms.js');
 
 const PORT = Number(process.env.PORT) || 3110;
@@ -49,10 +52,14 @@ const io = {
   cleared(personId) { const it = people.get(personId); if (it) { it.person.roomId = null; it.person.role = null; } }
 };
 
-const roomStore = process.env.UC_ROOM_DB_PATH ? require('./lib/room-store.js').openRoomStore(process.env.UC_ROOM_DB_PATH) : null;
+/* 房間快照：Cloudflare 由 runtime.roomStore 提供（Durable Object 儲存）；Node 上設定 UC_ROOM_DB_PATH 才用 SQLite。
+ * 模組路徑放變數裡，打包 Cloudflare 時不會把 node:sqlite 一起包進去。 */
+const STORE_MODULE = './lib/room-store.js';
+const roomStore = RT && RT.roomStore ? RT.roomStore
+  : process.env.UC_ROOM_DB_PATH ? require(STORE_MODULE).openRoomStore(process.env.UC_ROOM_DB_PATH) : null;
 const hub = createHub(io, { store: roomStore, onStorageError() {
   console.error('[ultimate-code] 房間寫入失敗，停止服務並等待重新啟動');
-  process.exit(1);
+  if (typeof process.exit === 'function') process.exit(1);
 } });
 
 /* 大廳聊天室（與房間聊天分開） */
@@ -95,6 +102,7 @@ function handle(person, msg) {
     case 'team': hub.setTeam(person, String(msg.team || '')); return;
     case 'private': hub.setPrivate(person, !!msg.value); return;
     case 'start': hub.start(person); return;
+    case 'rematch': hub.rematch(person, msg.value); return;
     case 'act': hub.act(person, msg); return;
     case 'secret': hub.setSecret(person, msg.value); return;
     case 'settings': hub.settings(person, msg.settings || msg); return;

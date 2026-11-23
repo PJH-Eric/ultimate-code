@@ -54,7 +54,7 @@
     if (!relang) { layer.classList.remove('in'); void layer.offsetWidth; layer.classList.add('in'); }
     ['again', 'room', 'home'].forEach(function (k) {
       var b = layer.querySelector('[data-act="' + k + '"]');
-      if (b && o[k] && o[k].onClick && !o[k].disabled) b.addEventListener('click', function () { hide(); o[k].onClick(); });
+      if (b && o[k] && o[k].onClick && !o[k].disabled) b.addEventListener('click', function () { if (!o[k].keep) hide(); o[k].onClick(); });
     });
     var first = keepAct ? layer.querySelector('[data-act="' + keepAct + '"]') : layer.querySelector('.res-actions button:not([disabled])');
     if (first) { if (relang) first.focus({ preventScroll: true }); else setTimeout(function () { if (first.isConnected) first.focus({ preventScroll: true }); }, 60); }
@@ -93,5 +93,7 @@
 
   if (root.I18N) root.I18N.onChange(function () { if (builder && visible()) render(builder(), true); });
 
-  root.Result = { show: show, hide: hide, visible: visible };
+  /** 內容變動（例如再來一局票數）：不重播動畫、焦點留在原按鈕 */
+  function refresh() { if (builder && visible()) render(builder(), true); }
+  root.Result = { show: show, hide: hide, visible: visible, refresh: refresh };
 })(typeof self !== 'undefined' ? self : this);

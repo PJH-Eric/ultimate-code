@@ -27,9 +27,9 @@
     root.App.show('game');
     root.App.setTitle(t(kind === 'crack' ? 'mode.crack' : 'mode.step'));
     var a = active;
-    if (opt.skipCountdown) { a.phase = 'play'; render(); return; }
+    if (opt.skipCountdown) { a.phase = 'play'; track(a); render(); return; }
     render();
-    root.GameView.countdown(Date.now() + 3000, function () { if (active === a) { a.phase = 'play'; mood = a.kind === 'crack' ? 'idle' : 'idle'; render(); } });
+    root.GameView.countdown(Date.now() + 3000, function () { if (active === a) { a.phase = 'play'; track(a); mood = a.kind === 'crack' ? 'idle' : 'idle'; render(); } });
   }
 
   function vm() {
@@ -89,9 +89,12 @@
     item: function () { /* 單人不使用道具 */ }
   };
 
+  /** GA4：開局與結束（同一個 matchId 只送一次） */
+  function track(a) { if (root.GameAnalytics) root.GameAnalytics.start({ mode: 'solo', variant: a.kind }, a.id); }
   function finish() {
     var a = active;
     a.phase = 'over';
+    if (root.GameAnalytics) root.GameAnalytics.end({ result: a.st.won ? 'win' : 'lose' }, a.id);
     var st = a.st;
     var rec = a.kind === 'crack'
       ? { id: a.id, kind: 'crack', mode: 'range', result: 'win', metric: st.history.length, stars: st.stars }

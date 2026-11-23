@@ -39,6 +39,7 @@
     var renderer = RENDER[name];
     if (renderer) renderer();
     updateTop();
+    if (root.GameAnalytics) root.GameAnalytics.pageView(name);
     if (root.ServerOutage) root.ServerOutage.setScreen(name === 'lobby' || name === 'room' ? name : (name === 'game' && root.OnlineUI && root.OnlineUI.inRoom() ? 'room' : name));
     if (!opt.fromPop && name !== prev && name !== 'game' && prev !== 'boot') {
       try { root.history.pushState({ s: name }, ''); } catch (e) { /* 忽略 */ }
@@ -288,7 +289,7 @@
     $('boot').hidden = true;
     /* 邀請連結：?room=XXXX&invite=token → 先到大廳確認暱稱再加入 */
     var q = new URLSearchParams(root.location.search);
-    if (q.get('room')) { show('home', { fromPop: true, focus: false }); root.OnlineUI.enterLobby({ room: q.get('room'), token: q.get('invite') || '' }); }
+    if (q.get('room')) { show('home', { fromPop: true, focus: false }); root.OnlineUI.enterLobby({ room: q.get('room'), token: q.get('invite') || '', as: q.get('as') || '' }); }
     else if (root.OnlineUI.pendingResume && root.OnlineUI.pendingResume()) { show('home', { fromPop: true, focus: false }); root.OnlineUI.resume(); }
     else show('home', { fromPop: true });
   }

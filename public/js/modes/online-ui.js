@@ -200,10 +200,11 @@
   }
 
   /* ---------- 房間畫面 ---------- */
+  var inviteRole = 'player';
   function inviteUrl() {
     if (!room || !room.invite || room.invite.revoked) return '';
     var base = root.location.origin + root.location.pathname;
-    var q = '?room=' + encodeURIComponent(room.id) + '&invite=' + encodeURIComponent(room.invite.token);
+    var q = '?room=' + encodeURIComponent(room.id) + '&invite=' + encodeURIComponent(room.invite.token) + (inviteRole === 'spectator' ? '&as=watch' : '');
     var sv = new URLSearchParams(root.location.search).get('server');
     if (sv) q += '&server=' + encodeURIComponent(sv);
     return root.GameBackend && root.GameBackend.pinInvite ? root.GameBackend.pinInvite(base + q) : base + q;
@@ -254,7 +255,8 @@
       '<div class="room-panels"><section class="panel"><h2 class="box-title">' + K.icon('gear') + esc(t('room.settings')) + (you.host ? '' : '<small>' + esc(t('room.hostOnly')) + '</small>') + '</h2>' + settingsForm(Object.assign({}, r.settings), !!you.host, 'rs-') +
       (you.host ? '<div class="set-row"><label class="set-label" for="rs-priv">' + esc(t('room.private')) + '<small>' + esc(t('room.privateHelp')) + '</small></label>' + K.switchHtml('rs-priv', r.private, t('room.private')) + '</div>' : '') + '</section>' +
       (you.host ? '<section class="panel invite-box"><h2 class="box-title">' + K.icon('link') + esc(t('room.invite')) + '</h2>' +
-        (r.invite && !r.invite.revoked ? '<p class="invite-url">' + esc(inviteUrl()) + '</p><div class="row-btns"><button type="button" class="btn small primary" id="rm-copy">' + K.icon('copy') + '<span>' + esc(t('room.copy')) + '</span></button><button type="button" class="btn small" id="rm-inv-new">' + K.icon('refresh') + '<span>' + esc(t('room.newInvite')) + '</span></button><button type="button" class="btn small danger" id="rm-inv-revoke">' + K.icon('close') + '<span>' + esc(t('room.revoke')) + '</span></button></div>'
+        (r.invite && !r.invite.revoked ? '<div class="field"><span class="f-label">' + esc(t('room.inviteAs')) + '</span>' + K.segHtml('rm-inv-role', [{ value: 'player', label: t('room.inviteAsPlayer'), icon: K.icon('user') }, { value: 'spectator', label: t('room.inviteAsSpec'), icon: K.icon('eye') }], inviteRole, t('room.inviteAs')) + '</div>' +
+          '<p class="invite-url">' + esc(inviteUrl()) + '</p><div class="row-btns">' + (root.navigator.share ? '<button type="button" class="btn small primary" id="rm-share">' + K.icon('send') + '<span>' + esc(t('room.share')) + '</span></button>' : '') + '<button type="button" class="btn small' + (root.navigator.share ? '' : ' primary') + '" id="rm-copy">' + K.icon('copy') + '<span>' + esc(t('room.copy')) + '</span></button><button type="button" class="btn small" id="rm-inv-new">' + K.icon('refresh') + '<span>' + esc(t('room.newInvite')) + '</span></button><button type="button" class="btn small danger" id="rm-inv-revoke">' + K.icon('close') + '<span>' + esc(t('room.revoke')) + '</span></button></div>'
           : '<p>' + esc(t('room.revoked')) + '</p><button type="button" class="btn small primary" id="rm-inv-new">' + K.icon('refresh') + '<span>' + esc(t('room.newInvite')) + '</span></button>') + '</section>' : '') +
       '<section class="panel"><h2 class="box-title">' + K.icon('eye') + esc(t('room.specs')) + '<small>' + r.specs.length + '/' + r.specMax + '</small></h2>' +
       (r.specs.length ? '<ul class="spec-list">' + r.specs.map(function (s) { return '<li>' + root.GameView.avatar(s.avatar, 'av-mini') + '<span>' + esc(s.name) + (s.id === you.id ? esc(t('game.meSuffix')) : '') + '</span>' + (you.host ? '<button type="button" class="btn small ghost icon-only" data-kick="' + esc(s.id) + '" aria-label="' + esc(t('room.kickN', { n: s.name })) + '">' + K.icon('kick') + '</button>' : '') + '</li>'; }).join('') + '</ul>' : '<p class="empty">' + esc(t('room.noSpecs')) + '</p>') + '</section></div>';
@@ -269,6 +271,8 @@
     scr.querySelector('.room-main').scrollTop = y;
     $('summary').innerHTML = roomSummary();
     renderChat();
+    var roleSeg = $('rm-inv-role');
+    if (roleSeg) K.bindSeg(roleSeg, function (v) { inviteRole = v; var u = scr.querySelector('.invite-url'); if (u) u.textContent = inviteUrl(); });
     if (you.host) {
       var s = Object.assign({}, r.settings);
       bindSettings(scr, 'rs-', s, function () { Net.send({ type: 'settings', settings: s }); });
@@ -323,6 +327,7 @@
       K.Modal({ title: t('room.kickT'), body: '<p>' + esc(t('room.kickBody', { n: who ? who.name : '' })) + '</p>', actions: [{ label: t('common.cancel'), kind: 'ghost' }, { label: t('room.kick'), kind: 'danger', icon: 'kick', onClick: function () { Net.send({ type: 'kick', target: id }); } }] });
     }
     else if (b.id === 'rm-copy') copyInvite();
+    else if (b.id === 'rm-share') shareInvite();
     else if (b.id === 'rm-inv-new') Net.send({ type: 'invite_new' });
     else if (b.id === 'rm-inv-revoke') Net.send({ type: 'invite_revoke' });
   }
@@ -330,6 +335,13 @@
     var url = inviteUrl(); if (!url) return;
     var done = function () { K.toast(t('room.copied'), 'ok'); };
     try { root.navigator.clipboard.writeText(url).then(done, function () { K.toast(t('room.copyFail'), 'warn'); }); } catch (e) { K.toast(t('room.copyFail'), 'warn'); }
+  }
+  /** 用手機的原生分享面板送出邀請連結；不支援或失敗就改成複製（使用者取消則不動作） */
+  function shareInvite() {
+    var url = inviteUrl(); if (!url) return;
+    if (!root.navigator.share) { copyInvite(); return; }
+    root.navigator.share({ title: t('doc.title'), text: t(inviteRole === 'spectator' ? 'room.shareTextSpec' : 'room.shareText', { c: room.id }), url: url })
+      .catch(function (e) { if (!e || e.name !== 'AbortError') copyInvite(); });
   }
   function confirmLeave() {
     if (!room) { app().show('lobby'); return; }
@@ -459,6 +471,12 @@
     var roundKey = mt.no + ':' + (mt.log.length);
     if (roundKey !== lastRoundKey) { lastRoundKey = roundKey; lastHistLen = 0; lastCur = null; root.GameView.reset(); }
     feedback(mt.game);
+    /* GA4：每一場（room＋場次）開局與結束各送一次，觀戰不計 */
+    if (root.GameAnalytics) {
+      var akey = room.id + ':' + mt.no;
+      if (room.status === 'finished') root.GameAnalytics.sync('finished', akey, null, { result: 'complete' });
+      else root.GameAnalytics.sync('playing', akey, { mode: 'online', variant: room.settings.mode, spectator: room.you.role === 'spectator', players: mt.seats.length });
+    }
     root.GameView.render(buildVm(), handlers);
     renderChat();
     /* 開局倒數：各端依伺服器時間點倒數 */
@@ -516,7 +534,7 @@
           }),
           lines: res.early ? [t('res.early')] : [],
           badges: [],
-          again: { label: room.you.host ? t('res.againHost') : t('res.againReady'), onClick: function () { again(); }, disabled: room.you.role !== 'player' && !room.you.host, note: room.you.role !== 'player' ? t('res.specNoAgain') : '' },
+          again: (function () { var v = rematchVotes(); return { keep: true, label: v.mine ? t('res.rematchCancel', v) : t('res.rematchVote', v), onClick: function () { again(); }, disabled: room.you.role !== 'player', note: room.you.role !== 'player' ? t('res.specNoAgain') : t('res.rematchHelp') }; })(),
           room: { onClick: function () { app().show('room'); } },
           home: { onClick: function () { Net.send({ type: 'leave' }); leftRoom(); Net.close(); app().show('home'); } }
         };
@@ -527,13 +545,15 @@
       });
     }, 1300);
   }
-  /** 再來一局：房主直接開（其他人要先準備），其他人＝按準備並回到房間 */
+  /** 再來一局投票：在座玩家全部投票就自動開下一場；再按一次取消 */
+  function rematchVotes() {
+    var seated = room ? room.seats.filter(Boolean) : [];
+    return { a: seated.filter(function (s) { return s.rematch; }).length, b: seated.length, mine: !!(room && room.you.seat >= 0 && room.seats[room.you.seat] && room.seats[room.you.seat].rematch) };
+  }
   function again() {
-    if (!room) return;
-    if (room.you.host) {
-      if (startHint().ok) Net.send({ type: 'start' });
-      else { app().show('room'); K.toast(t('res.waitOthers'), 'warn'); }
-    } else { Net.send({ type: 'ready', value: true }); app().show('room'); }
+    if (!room || room.you.role !== 'player') return;
+    Net.send({ type: 'rematch', value: !rematchVotes().mine });
+    root.Sound.play('key');
   }
 
   /* ---------- 伺服器訊息 ---------- */
@@ -546,6 +566,8 @@
     if (!prev || prev.id !== room.id) { chatMsgs = (room.chat || []).slice(); unread = 0; updateBadge(); lastResultNo = 0; lastGoAt = 0; lastRoundKey = ''; if (invite) invite = null; }
     var inGame = room.match && room.match.game && (room.status === 'playing' || room.status === 'between');
     var scr = app().screen;
+    if (inGame && root.Result.visible()) root.Result.hide();
+    if (room.status === 'finished' && root.Result.visible() && root.Result.refresh) root.Result.refresh();
     if (inGame) renderGame();
     else if (room.status === 'finished' && room.match && scr === 'game') renderGame();
     else if (scr === 'game' && !root.Result.visible()) app().show('room');
@@ -624,7 +646,7 @@
     if (!invite || room) return;
     var inv = invite;
     invite = null;
-    Net.send({ type: 'join', roomId: inv.room, token: inv.token, name: myName(), avatar: avatarSel, want: 'player' });
+    Net.send({ type: 'join', roomId: inv.room, token: inv.token, name: myName(), avatar: avatarSel, want: inv.as === 'watch' ? 'spectator' : 'player' });
   }
 
   root.OnlineUI = {
