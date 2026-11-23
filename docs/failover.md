@@ -21,8 +21,15 @@
 - Render 免費方案與 Cloudflare 目前都是**記憶體內房間**：該後端重新啟動或休眠時房間會消失（玩家會收到「原房間已不存在」並回到大廳）。`lib/room-store.js`（SQLite）保留給日後有持久磁碟的主機；Cloudflare 若要保存房間，需在 game-lobby `worker.mjs` 為本遊戲提供 `runtime.roomStore`（guess-ab 已有同樣做法，本專案的 `server.js` 會自動使用）。
 - 已經在 Render 進行中的房間不會搬到 Cloudflare；Render 掛掉時，新開的房間才會在 Cloudflare。
 
+## 部署狀態
+
+- **Cloudflare 備援已上線**：https://ultimate-code-backup.eric-games.workers.dev（2026-11-23 由本機 wrangler 部署；/health、WebSocket 建房、非允許來源 403 皆已實測）。
+- **自動部署**：`.github/workflows/deploy-cloudflare.yml` 在 push main 時用 game-lobby 打包器打包、wrangler 部署並檢查 /health。repo secret `CLOUDFLARE_ACCOUNT_ID` 已設定；`CLOUDFLARE_API_TOKEN` 需由帳號擁有者在 Cloudflare 建立（權限 Workers Scripts:Edit），未設定前工作流程只做打包檢查。
+- **手動部署**：`wrangler login` 後，依工作流程同樣的打包指令產生 `cloudflare/dist/worker.mjs`，再 `wrangler deploy --config cloudflare/wrangler.toml`。
+- **Render**：workspace 免費方案額度已用完，服務尚未建立（`render.yaml` 已驗證、autoDeploy 已設定）。
+
 ## 上線還需要（尚未執行）
 
-1. game-lobby 這兩行設定的 commit 與部署（目前只改在本機工作區）。
+1. ~~game-lobby 這兩行設定~~：已提交並推送（d514544）。
 2. 建立 Render 服務（`render.yaml`）與 Cloudflare worker（game-lobby 的部署流程），並在本 repo 的 GitHub Variables 設定 `GAME_SERVER_URL`。
 3. 依使用者指示，目前**只做本機 git，不 push、不部署**。
