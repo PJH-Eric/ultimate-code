@@ -42,6 +42,18 @@ const BASE = process.env.BASE || 'http://localhost:3110/';
   assert.strictEqual(await p.evaluate(() => Store.recordMatch({ id: Solo.active.id, kind: 'crack', result: 'win', metric: 3 }).counted), false, '同一個 matchId 不重複計');
   await p.waitForTimeout(400);
   assert.ok(await p.evaluate(() => !!document.querySelector('.res-main .result-share')), '結算有分享按鈕');
+  /* 分享圖片：開窗 → 產生 PNG → Esc 只關分享視窗、結算還在 */
+  await p.click('.result-share-trigger');
+  await p.waitForSelector('.result-share-dialog-layer:not([hidden]) .result-share-image', { timeout: 15000 });
+  const img = await p.evaluate(() => { const i = document.querySelector('.result-share-image'); return { w: i.naturalWidth, h: i.naturalHeight, src: i.src.slice(0, 10) }; });
+  assert.ok(img.w > 200 && img.h > 200, '分享圖片有內容：' + JSON.stringify(img));
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(250);
+  assert.ok(await p.evaluate(() => !document.querySelector('.result-share-dialog-layer:not([hidden])')), 'Esc 關掉分享視窗');
+  assert.ok(await p.evaluate(() => Result.visible()), 'Esc 不會關掉結算');
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(150);
+  assert.ok(await p.evaluate(() => Result.visible()), '再按 Esc 結算仍在（三顆按鈕才是出口）');
   await p.click('[data-act="again"]');
   await p.waitForTimeout(200);
   assert.ok(await p.evaluate(() => !Result.visible() && !document.getElementById('countdown').hidden), '再來一局重新倒數');

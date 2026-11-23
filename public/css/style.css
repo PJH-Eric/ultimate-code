@@ -595,11 +595,15 @@ svg.av-mini { width: 26px; height: 26px; flex: none; }
 /* 橫向（寬 ≥ 高）：盤面左右兩欄，數字格依高度撐滿 */
 @media (orientation: landscape) and (min-width: 700px) {
   .board { max-width: 1100px; display: grid; grid-template-columns: minmax(300px, 1fr) auto; grid-template-rows: auto; align-content: start; column-gap: 14px; }
-  .board > *:not(.pick):not(.track):not(.steps) { grid-column: 1; }
+  .board > *:not(.pick):not(.track):not(.steps):not(.items-row) { grid-column: 1; }
+  .range-board > .items-row, .count-board.step > .items-row { grid-column: 1; }
   .range-board .pick, .count-board.step .track { grid-column: 2; grid-row: 1 / span 6; align-self: start; }
   .range-board .pick .grid10, .count-board.step .grid10.mini { width: var(--gs, 420px); max-width: none; }
   .range-board .pick .pad { width: min(320px, var(--gs, 320px)); }
-  .count-board:not(.step) .track, .count-board:not(.step) .steps { grid-column: 1; }
+  /* 累加（線上）：左邊轉盤、右邊進度＋三顆大按鈕＋道具 */
+  .count-board:not(.step) { grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.3fr); }
+  .count-board:not(.step) > .dial-row { grid-column: 1; grid-row: 1 / span 3; align-self: start; }
+  .count-board:not(.step) > .track, .count-board:not(.step) > .steps, .count-board:not(.step) > .items-row { grid-column: 2; }
   .count-board.step .steps { grid-column: 1; }
 }
 @media (max-width: 1180px) { :root { --side-w: 236px; --right-w: 230px; } }
@@ -715,3 +719,7 @@ body .lc-root {
   --lc-z: 900;
 }
 #g-board:focus { outline: none; }
+
+/* 共用分享視窗：改用自訂捲軸 */
+.result-share-dialog.scroll { scrollbar-width: none !important; }
+.result-share-dialog.scroll::-webkit-scrollbar { display: none !important; width: 0 !important; }

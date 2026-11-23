@@ -1,0 +1,16 @@
+{
+  "name": "終極密碼",
+  "short_name": "終極密碼",
+  "description": "密碼藏在 1～100，範圍越猜越小，猜中的人輸！單人挑戰與線上紅藍組隊。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFF4E0",
+  "theme_color": "#FFF4E0",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

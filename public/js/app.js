@@ -282,6 +282,8 @@
     });
     root.I18N.onChange(onLang);
     root.addEventListener('popstate', onPop);
+    /* 共用的分享圖片視窗是動態產生的：加上 .scroll，讓它也用自訂捲軸 */
+    new MutationObserver(function () { doc.querySelectorAll('.result-share-dialog:not(.scroll)').forEach(function (d) { d.classList.add('scroll'); K.attachScroll(d); }); }).observe(doc.body, { childList: true });
     try { root.history.replaceState({ s: 'root' }, ''); root.history.pushState({ s: 'home' }, ''); } catch (e) { /* 忽略 */ }
     $('boot').hidden = true;
     /* 邀請連結：?room=XXXX&invite=token → 先到大廳確認暱稱再加入 */

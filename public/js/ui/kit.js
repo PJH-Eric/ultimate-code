@@ -275,6 +275,7 @@
     });
   }
   function schedule() { if (!queued) { queued = true; requestAnimationFrame(update); } }
+  function layerReady() { return !!(doc && doc.body); }
   function scan(node) {
     if (node.nodeType !== 1) return;
     if (node.classList.contains('scroll')) attach(node);
@@ -329,6 +330,6 @@
     fmtTime: fmtTime, clockHtml: clockHtml, tickClocks: tickClocks,
     esc: esc, h: h, icon: icon, toast: toast, Modal: Modal, menu: menu,
     switchHtml: switchHtml, bindSwitch: bindSwitch, stepperHtml: stepperHtml, bindStepper: bindStepper,
-    segHtml: segHtml, bindSeg: bindSeg, refreshScroll: schedule
+    segHtml: segHtml, bindSeg: bindSeg, refreshScroll: schedule, attachScroll: function (el) { if (layerReady()) { scan(el); schedule(); } }
   };
 })(typeof self !== 'undefined' ? self : this);

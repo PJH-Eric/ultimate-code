@@ -38,6 +38,26 @@ async function createRoom(p, settings, name) {
   await p.evaluate(([s, n]) => Net.send({ type: 'create', name: n, settings: s }), [settings, name || '測試玩家名字很長很長的人']); await p.waitForTimeout(700);
 }
 async function startOnline(p) { await p.evaluate(() => Net.send({ type: 'start' })); await p.waitForTimeout(700); }
+/** 別人開的房（p 以 want 身分加入）：回傳房主分頁與其他分頁 */
+async function othersRoom(p, settings, want, n) {
+  const mk = async (name) => { const ctx = await BROWSER.newContext({ viewport: { width: 800, height: 600 } }); const q = await ctx.newPage(); await q.goto(BASE); await q.waitForTimeout(250); await q.evaluate(() => OnlineUI.enterLobby()); await q.waitForTimeout(700); (p._ctx = p._ctx || []).push(ctx); return q; };
+  const host = await mk('房主');
+  await host.evaluate(s => Net.send({ type: 'create', name: '別人的房主 Long Name', settings: s }), settings); await host.waitForTimeout(500);
+  const id = await host.evaluate(() => OnlineUI.room.id);
+  const qs = [host];
+  for (let i = 1; i < (n || 2); i++) { const q = await mk('p' + i); await q.evaluate(([id, i]) => { Net.send({ type: 'join', roomId: id, name: '玩家' + i, want: 'player' }); }, [id, i]); await q.waitForTimeout(300); await q.evaluate(() => Net.send({ type: 'ready', value: true })); qs.push(q); }
+  await p.evaluate(() => OnlineUI.enterLobby()); await p.waitForTimeout(800);
+  await p.evaluate(([id, want]) => Net.send({ type: 'join', roomId: id, name: '我是看的人', want }), [id, want]); await p.waitForTimeout(500);
+  if (want === 'player') { await p.evaluate(() => Net.send({ type: 'ready', value: true })); await p.waitForTimeout(200); }
+  return qs;
+}
+/** 讓目前輪到的分頁出手（猜下限或 +1） */
+async function stepAll(pages, times) {
+  for (let k = 0; k < times; k++) {
+    for (const q of pages) await q.evaluate(() => { const r = OnlineUI.room; if (!r || !r.match || r.status !== 'playing') return; const g = r.match.game; if (g.current !== r.you.seat || r.match.phase !== 'play') return; Net.send(g.mode === 'count' ? { type: 'act', kind: 'add', value: 1 } : { type: 'act', kind: 'guess', value: g.lo }); });
+    await pages[0].waitForTimeout(260);
+  }
+}
 
 const SCENES = {
   home: async () => {},
@@ -55,6 +75,15 @@ const SCENES = {
   step: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { GameView._add(2); GameView._add(2); }); },
   stepLose: async p => { await p.evaluate(() => Solo.start({ kind: 'step', skipCountdown: true, seed: 'audit' })); await p.evaluate(() => { const m = Solo.active.st.mines[0]; let t = 0; while (m - t > 3) { const n = (m - t - 3 >= 1 && Solo.active.st.mines.indexOf(t + 3) < 0) ? 3 : (Solo.active.st.mines.indexOf(t + 2) < 0 ? 2 : 1); GameView._add(n); t = Solo.active.st.total; if (Solo.active.st.over) return; } GameView._add(m - t); }); await p.waitForTimeout(1800); },
   lobby: async p => { await p.evaluate(() => OnlineUI.enterLobby()); await p.waitForTimeout(1000); },
+  share: async p => { await SCENES.crackWin(p); await p.click('.result-share-trigger'); await p.waitForSelector('.result-share-image', { timeout: 15000 }); await p.waitForTimeout(300); },
+  lobbyRooms: async p => {
+    for (let i = 0; i < 4; i++) { const ctx = await BROWSER.newContext(); const q = await ctx.newPage(); await q.goto(BASE); await q.waitForTimeout(200); await q.evaluate(() => OnlineUI.enterLobby()); await q.waitForTimeout(600); await q.evaluate(i => Net.send({ type: 'create', name: ['小明', 'A very long English nickname', '房主三號名字很長很長', 'Dee'][i], settings: { mode: i % 2 ? 'count' : 'range', teams: i === 2, rounds: [1, 3, 5, 1][i], turnSec: [0, 15, 30, 60][i] } }), i); (p._ctx = p._ctx || []).push(ctx); }
+    await p.evaluate(() => OnlineUI.enterLobby()); await p.waitForTimeout(1200);
+  },
+  onlineSpec: async p => { const qs = await othersRoom(p, { mode: 'range', rounds: 3, items: true }, 'spectator', 3); await qs[0].evaluate(() => Net.send({ type: 'start' })); await p.waitForTimeout(1200); await stepAll(qs, 3); await p.waitForTimeout(400); },
+  setterWait: async p => { await othersRoom(p, { mode: 'range', setterMode: 'player', rounds: 3 }, 'player', 3).then(async qs => { await qs[0].evaluate(() => Net.send({ type: 'start' })); }); await p.waitForTimeout(1000); },
+  onlineBetween: async p => { const qs = await othersRoom(p, { mode: 'count', rounds: 3, turnSec: 0 }, 'player', 2); await qs[0].evaluate(() => Net.send({ type: 'start' })); await p.waitForTimeout(3600); const all = qs.concat([p]); for (let k = 0; k < 120; k++) { const st = await p.evaluate(() => OnlineUI.room.status); if (st !== 'playing') break; await stepAll(all, 1); } await p.waitForTimeout(300); },
+  chatLong: async p => { await SCENES.online(p); await p.evaluate(() => App.openSide()); for (const tx of ['這是一則非常非常長的聊天訊息，用來測試聊天室會不會被撐破版面，或是文字有沒有正確換行顯示。', 'https://example.com/a/very/long/url/without/any/spaces/that/should/wrap/properly/in/the/chat/box', 'ok']) { await p.evaluate(tx => Net.send({ type: 'chat', text: tx }), tx); await p.waitForTimeout(400); } },
   room: async p => { await createRoom(p, { mode: 'range', teams: false }); await extra(p, '第二位玩家'); },
   roomTeams: async p => { await createRoom(p, { mode: 'range', teams: true, setterMode: 'player', rounds: 3, cap: 8 }); await p.evaluate(() => Net.send({ type: 'team', team: 'red' })); await extra(p, '藍隊玩家一號', { team: 'blue' }); await extra(p, '紅隊二號', { team: 'red' }); await extra(p, 'Blue Two', { team: 'blue' }); await extra(p, '觀戰的人', { want: 'spectator' }); },
   online: async p => { await SCENES.room(p); await extra(p, '第三位'); await startOnline(p); await p.waitForTimeout(400); },
@@ -108,6 +137,8 @@ async function check(p, view) {
       if (!visible(el) || el.scrollHeight <= el.clientHeight + 2 || el.getBoundingClientRect().height < 40) return;
       if (el.closest('[inert]')) return;
       const r = el.getBoundingClientRect();
+      const mid = document.elementFromPoint(Math.min(vw - 1, Math.max(0, r.left + r.width / 2)), Math.min(vh - 1, Math.max(0, r.top + Math.min(r.height, vh - r.top) / 2)));
+      if (mid && !el.contains(mid) && !mid.closest('.sb-track')) return;   // 被更上層的彈窗蓋住，不算
       const x = Math.min(vw - 1, r.right - 5), y = Math.min(vh - 1, Math.max(0, r.top + Math.min(r.height, vh - r.top) / 2));
       const hit = document.elementFromPoint(x, y);
       if (!hit || !hit.closest('.sb-track')) issues.push('捲軸看不到：' + (el.id || String(el.className).split(' ')[0]));
