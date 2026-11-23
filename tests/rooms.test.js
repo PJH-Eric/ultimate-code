@@ -368,4 +368,64 @@ test('重啟後寬限到期：沒回來的人照離線規則處理、房間零�
   } finally { for (const f of [file, file + '-wal', file + '-shm']) try { fs.unlinkSync(f); } catch (e) { /* 忽略 */ } }
 });
 
+test('角色權限：非房主不能改設定／踢人／發邀請；觀戰者不能準備、選隊、出題', () => {
+  const env = setup();
+  const { ps, id, r } = table(env, 3, { mode: 'range', setterMode: 'player', teams: true });
+  const s = env.P('看戲');
+  env.hub.join(s, { roomId: id, name: '看戲', want: 'spectator' });
+  const before = JSON.stringify(r().settings), tokenBefore = r().invite.token;
+  env.hub.settings(ps[1], { rounds: 5 });
+  env.hub.kick(ps[1], ps[2].id);
+  env.hub.inviteNew(ps[1]); env.hub.inviteRevoke(ps[1]);
+  env.hub.setPrivate(ps[1], true);
+  assert.strictEqual(JSON.stringify(r().settings), before, '非房主改不了設定');
+  assert.ok(r().seats.some(x => x && x.id === ps[2].id), '非房主踢不了人');
+  assert.strictEqual(r().invite.token, tokenBefore); assert.strictEqual(r().invite.revoked, false); assert.strictEqual(r().private, false);
+  env.hub.setReady(s, true); env.hub.setTeam(s, 'red');
+  assert.ok(!r().specs.get(s.id).ready && !r().specs.get(s.id).team, '觀戰者不能準備或選隊');
+  env.hub.start(ps[0]);
+  env.hub.setSecret(s, 5);
+  assert.deepStrictEqual(env.errs(s).slice(-1), ['not_setter']);
+  env.hub.settings(ps[0], { rounds: 5 });
+  assert.deepStrictEqual(env.errs(ps[0]).slice(-1), ['busy_settings'], '對局中不能改設定');
+  env.hub.sit(s);
+  assert.deepStrictEqual(env.errs(s).slice(-1), ['busy_sit'], '對局中不能入座');
+  /* 只有房主能看到邀請 token；觀戰者快照不含 token */
+  assert.strictEqual(env.room(s).invite, null);
+  assert.ok(env.room(ps[0]).invite.token);
+});
+
+test('房主離開：房主轉給下一位玩家（不會交給觀戰者）', () => {
+  const env = setup();
+  const { ps, id, r } = table(env, 2, {});
+  const s = env.P('看戲');
+  env.hub.join(s, { roomId: id, name: '看戲', want: 'spectator' });
+  env.hub.leave(ps[0].id);
+  assert.strictEqual(r().hostId, ps[1].id);
+});
+
+test('聊天過濾：不雅字詞換成＊、暱稱也過濾、控制字元與超長訊息被清掉', () => {
+  const env = setup();
+  const { ps } = table(env, 2, {});
+  env.clear();
+  env.hub.chat(ps[0], '你這個白癡 fuck');
+  const m = env.last(ps[1], 'chat').msg;
+  assert.ok(!/白癡|fuck/.test(m.text), '不雅字詞被遮：' + m.text);
+  assert.ok(/＊/.test(m.text));
+  env.hub.chat(ps[0], ''); env.hub.chat(ps[0], '   ');
+  assert.strictEqual(env.last(ps[1], 'chat').msg, m, '空白訊息不送');
+  env.t += 400;
+  env.hub.chat(ps[0], 'a\u0007b' + 'x'.repeat(500));
+  const m2 = env.last(ps[1], 'chat').msg;
+  assert.ok(m2.text.indexOf('\u0007') < 0 && Array.from(m2.text).length <= CONST.CHAT_MAX);
+  const bad = env.P('bad');
+  env.hub.create(bad, { name: '王八蛋<script>' });
+  const nm = env.room(bad).seats[0].name;
+  assert.ok(!/王八蛋|</.test(nm), '暱稱過濾：' + nm);
+  /* 洗版：350ms 內第二則被擋 */
+  env.clear(); env.t += 400;
+  env.hub.chat(ps[0], '一'); env.hub.chat(ps[0], '二');
+  assert.strictEqual(env.last(ps[1], 'chat').msg.text, '一');
+});
+
 console.log('房間測試全部通過：' + passed + ' 項');
