@@ -141,7 +141,7 @@ async function playOut(cs, kind) {
   await playOut([A, Bx], 'count');
   await sleep(300);
   assert.strictEqual(A.room().status, 'finished');
-  assert.strictEqual(A.room().match.game.total, 100);
+  { const g = A.room().match.game; assert.ok(g.loser != null && g.total >= g.secret, '累加模式有人踩到或跨過地雷'); assert.ok(g.secret >= 1 && g.secret <= 100, '結算後地雷公開'); }
 
   /* 不存在的房間：resume_fail */
   const Z = await resumeClient(port, '丁', 'zzz-' + Date.now(), 'NOPE');

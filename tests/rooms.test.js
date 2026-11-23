@@ -22,6 +22,8 @@ function setup(opt) {
   return { hub, P, last, room, errs, clear, adv(ms) { t += ms; hub.tick(); }, get t() { return t; }, set t(v) { t = v; } };
 }
 /** 建一間房、拉 n 個人進來並準備 */
+/** 累加模式把地雷固定在 100（測試要走到 99 再踩） */
+function pinMine(r) { const g = r().match && r().match.game; if (g && g.mode === 'count') g.secret = 100; }
 function table(env, n, settings) {
   const ps = ['甲', '乙', '丙', '丁', '戊', '己'].slice(0, n).map(env.P);
   env.hub.create(ps[0], { name: ps[0].name, settings: settings || {} });
@@ -70,25 +72,25 @@ test('倒數期間不能出手；只有輪到的人能出手；密碼不在任�
 
 test('逾時自動行動（一般隨機猜、累加 +1），限時從下一位重新起算', () => {
   const env = setup();
-  const { ps, r } = table(env, 2, { mode: 'count', turnSec: 15 });
-  env.hub.start(ps[0]);
+  const { ps, r } = table(env, 2, { mode: 'count', turnSec: 10 });
+  env.hub.start(ps[0]); pinMine(r);
+  assert.strictEqual(r().settings.turnSec, 10);
   env.adv(3000);
-  env.adv(14000);
+  env.adv(9000);
   assert.strictEqual(r().match.game.total, 0);
   env.adv(1100);
   assert.strictEqual(r().match.game.total, 1, '逾時自動 +1');
   assert.ok(r().match.game.history[0].auto);
-  assert.ok(r().match.deadline > env.t + 14000, '下一位重新計時');
+  assert.ok(r().match.deadline > env.t + 9000, '下一位重新計時');
 });
 
-test('不限時：沒有逾時；輪到的人斷線 10 秒後代打、30 秒後離場', () => {
+test('限時只有 10／20／30 秒；輪到的人斷線 10 秒後代打（不必等滿 30 秒）、30 秒後離場', () => {
   const env = setup();
   const { ps, r } = table(env, 3, { mode: 'count', turnSec: 0 });
-  env.hub.start(ps[0]);
+  assert.strictEqual(r().settings.turnSec, 30, '不限時已取消，回到預設 30 秒');
+  env.hub.start(ps[0]); pinMine(r);
   env.adv(3000);
-  assert.strictEqual(r().match.deadline, 0);
-  env.adv(60000);
-  assert.strictEqual(r().match.game.total, 0, '不限時不會自動行動');
+  assert.ok(r().match.deadline > 0, '一定有回合限時');
   const cur = r().match.game.order[r().match.game.pos];
   const curP = ps.find(p => r().seats[cur].id === p.id);
   env.hub.markDisconnected(curP.id);
@@ -110,16 +112,23 @@ test('30 秒內重連回原座位', () => {
   assert.ok(r().seats.some(s => s && s.id === ps[1].id && s.connected));
 });
 
-test('掛機：輪到的人 2.5 分鐘提醒、3 分鐘離場；只剩 1 人直接結算', () => {
+test('掛機：一直靠逾時自動行動、3 分鐘沒真正操作就離場（2.5 分鐘先提醒）；只剩 1 人直接結算', () => {
   const env = setup();
-  const { ps, r } = table(env, 2, { mode: 'range', turnSec: 0 });
-  env.hub.start(ps[0]);
+  const { ps, r } = table(env, 2, { mode: 'count', turnSec: 10 });
+  env.hub.start(ps[0]); pinMine(r);
   env.adv(3000);
   const cur = r().match.game.order[r().match.game.pos];
   const curP = ps.find(p => r().seats[cur].id === p.id);
-  env.adv(CONST.IDLE_WARN_MS + 100);
-  assert.ok(env.last(curP, 'toast') && env.last(curP, 'toast').code === 'idleWarn');
-  env.adv(CONST.IDLE_MS - CONST.IDLE_WARN_MS);
+  const other = ps.find(p => p !== curP);
+  /* 對手每次輪到都馬上報 +1；掛機的人只靠逾時自動 +1 */
+  let warned = false;
+  for (let k = 0; k < CONST.IDLE_MS / 1000 + 30 && r().status === 'playing'; k++) {
+    const g = r().match.game;
+    if (r().seats[g.order[g.pos]] && r().seats[g.order[g.pos]].id === other.id) { env.t += 250; env.hub.act(other, { kind: 'add', value: 1 }); }
+    env.adv(1000);
+    if (env.last(curP, 'toast') && env.last(curP, 'toast').code === 'idleWarn') warned = true;
+  }
+  assert.ok(warned, '2.5 分鐘先提醒');
   assert.strictEqual(r().status, 'finished', '只剩 1 人直接結算');
   assert.strictEqual(r().result.winners.length, 1);
   assert.notStrictEqual(r().result.winners[0], cur);
@@ -172,7 +181,7 @@ test('玩家出題：出題者選密碼（只有他看得到）、其他人等�
   const env2 = setup();
   const t2 = table(env2, 3, { mode: 'range', setterMode: 'player', turnSec: 15 });
   env2.hub.start(t2.ps[0]);
-  env2.adv(20500);
+  env2.adv(CONST.SET_MS + 500);
   assert.strictEqual(t2.r().match.phase, 'play', '出題逾時用預設密碼開始');
 });
 
@@ -191,7 +200,7 @@ test('組隊：紅藍交錯、踩中的人所屬隊伍輸、隊伍未選好不�
   const g = r().match.game;
   assert.deepStrictEqual(g.order.map(s => r().seats[s].team), ['red', 'blue', 'red', 'blue']);
   env.adv(3001);
-  g.total = 99;
+  g.total = 99; g.secret = 100;
   const cur = g.order[g.pos];
   const curP = ps.find(p => r().seats[cur].id === p.id);
   env.hub.act(curP, { kind: 'add', value: 1 });
@@ -436,7 +445,7 @@ test('再來一局投票：全員投票自動開下一場；可取消；有人�
   env.hub.rematch(ps[0], true);
   assert.ok(!r().seats[0].rematch, '對局前不能投');
   env.hub.start(ps[0]); env.adv(3001);
-  const g = r().match.game; g.total = 99;
+  const g = r().match.game; g.total = 99; g.secret = 100;
   env.hub.act(ps.find(p => r().seats[g.order[g.pos]].id === p.id), { kind: 'add', value: 1 });
   assert.strictEqual(r().status, 'finished');
   env.hub.rematch(s, true);
@@ -451,11 +460,35 @@ test('再來一局投票：全員投票自動開下一場；可取消；有人�
   assert.strictEqual(r().matchNo, 2);
   assert.ok(r().seats.every(x => !x || !x.rematch), '開局後清空投票');
   /* 有人離開清空投票 */
-  env.adv(3001); const g2 = r().match.game; g2.total = 99;
+  env.adv(3001); const g2 = r().match.game; g2.total = 99; g2.secret = 100;
   env.hub.act(ps.find(p => r().seats[g2.order[g2.pos]].id === p.id), { kind: 'add', value: 1 });
   env.hub.rematch(ps[0], true); env.hub.rematch(ps[1], true);
   env.hub.leave(ps[2].id);
   assert.ok(r().seats.every(x => !x || !x.rematch), '有人離開清空投票');
+});
+
+test('累加模式玩家埋地雷：只有出題者看得到、踩到或跨過就輸、結算後公開', () => {
+  const env = setup();
+  const { ps, r } = table(env, 3, { mode: 'count', setterMode: 'player', turnSec: 30 });
+  env.hub.start(ps[0]);
+  assert.strictEqual(r().match.phase, 'set', '累加模式也先出題');
+  const g = r().match.game;
+  const setterP = ps.find(p => r().seats[g.setter].id === p.id);
+  const others = ps.filter(p => p !== setterP);
+  env.hub.setSecret(setterP, 5);
+  assert.strictEqual(r().match.game.secret, 5);
+  assert.strictEqual(env.room(setterP).match.game.secret, 5, '出題者看得到自己埋的地雷');
+  others.forEach(p => assert.strictEqual(env.room(p).match.game.secret, null, '其他人看不到地雷'));
+  env.adv(3001);
+  const cur = ps.find(p => r().seats[g.order[g.pos]].id === p.id);
+  env.hub.act(cur, { kind: 'add', value: 3 });
+  env.t += 300;
+  const nxt = ps.find(p => r().seats[g.order[g.pos]].id === p.id);
+  env.hub.act(nxt, { kind: 'add', value: 3 });         // 3 → 6 跨過 5
+  assert.strictEqual(r().status, 'finished');
+  assert.strictEqual(r().match.game.loser, r().seats.findIndex(x => x && x.id === nxt.id), '跨過地雷的人輸');
+  assert.strictEqual(env.room(others[0]).match.log[0].secret, 5, '結算後地雷公開');
+  assert.strictEqual(env.room(others[0]).match.game.history.pop().mineAt, 5);
 });
 
 console.log('房間測試全部通過：' + passed + ' 項');

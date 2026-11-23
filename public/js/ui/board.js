@@ -119,7 +119,7 @@
     html += '<div class="dial-row">' + hostBlock() +
       '<div class="range-dial"><span class="rd-label">' + esc(t(hint ? 'game.range' : 'game.rangeHidden')) + '</span>' +
       (hint ? '<div class="rd-nums">' + dial(lo, 'lo') + '<span class="rd-sep">～</span>' + dial(hi, 'hi') + '</div>' : '<div class="rd-nums">' + dial(1, 'lo') + '<span class="rd-sep">～</span>' + dial(100, 'hi') + '</div>') +
-      (vm.secret != null ? '<span class="rd-secret">' + K.icon('safe') + esc(t('game.yourSecret', { n: vm.secret })) + '</span>' : '') + '</div></div>';
+      (vm.secret != null ? '<span class="rd-secret">' + K.icon('safe') + esc(t(vm.isSetter ? 'game.yourSecret' : 'game.revealSecret', { n: vm.secret })) + '</span>' : '') + '</div></div>';
     if (hint) {
       html += '<div class="range-bar" aria-hidden="true"><i style="left:' + (lo - 1) + '%;width:' + Math.max(1, hi - lo + 1) + '%"></i><span class="rb-l">1</span><span class="rb-m">50</span><span class="rb-r">100</span></div>';
     }
@@ -163,7 +163,8 @@
     var html = '<div class="board count-board' + (step ? ' step' : '') + '">';
     html += '<div class="dial-row">' + hostBlock() +
       '<div class="range-dial"><span class="rd-label">' + esc(t('game.now')) + '</span><div class="rd-nums">' + dial(total, 'tot') + '</div>' +
-      '<span class="rd-goal">' + K.icon(step ? 'target' : 'mine') + esc(t(step ? 'game.goalStep' : 'game.goalCount')) + '</span></div></div>';
+      '<span class="rd-goal">' + K.icon(step ? 'target' : 'mine') + esc(t(step ? 'game.goalStep' : 'game.goalCount')) + '</span>' +
+      (!step && vm.secret != null ? '<span class="rd-secret">' + K.icon('mine') + esc(t(vm.isSetter ? 'game.yourMine' : 'game.revealMine', { n: vm.secret })) + '</span>' : '') + '</div></div>';
     /* 0～100 進度：踩點顯示地雷與走過的格子 */
     var mines = {}, path = {};
     (vm.mines || []).forEach(function (m) { mines[m] = true; });
@@ -187,7 +188,7 @@
     html += '<div class="steps" role="group" aria-label="' + esc(t('game.stepsAria')) + '">' + [1, 2, 3].map(function (n) {
       var to = total + n;
       var ok = vm.canAct && (step || to <= 100);
-      var danger = step ? (mines[to] || to > 100) : to >= 100;
+      var danger = step ? (mines[to] || to > 100) : (vm.secret != null && total < vm.secret && vm.secret <= to);
       return '<button type="button" class="step-big' + (danger ? ' danger' : '') + '" data-add="' + n + '"' + (ok ? '' : ' disabled') + ' aria-label="' + esc(t('game.addAria', { n: n, to: to })) + '">' +
         '<b>+' + n + '</b><small>' + esc(t('game.toN', { n: to })) + '</small></button>';
     }).join('') + '</div>';
@@ -224,7 +225,7 @@
       return who + '<span>' + esc(t('hist.guess', { n: h.value })) + (h.auto ? '<small>' + esc(t('hist.auto')) + '</small>' : '') + '</span>' + res;
     }
     if (h.kind === 'add') {
-      var r2 = h.result === 'hit' ? '<em class="r-hit">' + K.icon('mine') + esc(t('res.hit')) + '</em>' : h.result === 'mine' ? '<em class="r-hit">' + K.icon('mine') + esc(t('res.mine')) + '</em>' :
+      var r2 = h.result === 'hit' ? '<em class="r-hit">' + K.icon('mine') + esc(h.mineAt != null ? t('res.hit') + ' ' + t('hist.mineAt', { n: h.mineAt }) : t('res.hit')) + '</em>' : h.result === 'mine' ? '<em class="r-hit">' + K.icon('mine') + esc(t('res.mine')) + '</em>' :
         h.result === 'over' ? '<em class="r-hit">' + esc(t('res.over')) + '</em>' : h.result === 'goal' ? '<em class="r-goal">' + K.icon('target') + esc(t('res.goal')) + '</em>' : '<em class="r-ok">' + h.to + '</em>';
       return who + '<span>+' + h.value + (h.auto ? '<small>' + esc(t('hist.auto')) + '</small>' : '') + '</span>' + r2;
     }

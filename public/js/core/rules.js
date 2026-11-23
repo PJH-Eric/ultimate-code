@@ -5,7 +5,8 @@
  *
  * 兩種玩法
  *   range 一般模式（範圍縮小）：密碼在 [lo, hi]，猜中的人輸；猜小 → [g+1, hi]，猜大 → [lo, g-1]。
- *   count 累加模式：目前數字從 0 起，每回合 +1／+2／+3（不能超過 100），報到 100 的人輸。
+ *   count 累加模式（隱藏地雷）：目前數字從 0 起，每回合 +1／+2／+3（不能超過 100）。1～100 藏著一顆地雷
+ *         （就是密碼，電腦或出題玩家設定，其他人看不到），停在地雷上或跨過地雷都算踩中——數字只增不減，所以一定有人踩中。
  * 道具（每人各 1 個、用完就沒）：skip 跳過、reverse 迴轉（輪到上一位）、assign 指定（任何其他猜題者）。
  * 使用道具就是這回合的行動，不改變範圍或累加數字。
  *
@@ -21,12 +22,12 @@
   'use strict';
 
   var MIN = 1, MAX = 100;
-  var TARGET = 100;                      // 累加模式終點（報到它的人輸）
+  var TARGET = 100;                      // 累加模式上限（地雷最大也只到 100）
   var STEPS = [1, 2, 3];
   var ITEMS = ['skip', 'reverse', 'assign'];
   var TEAMS = ['red', 'blue'];
   var ROUNDS = [1, 3, 5];
-  var TURN_SECS = [0, 15, 30, 60];       // 0＝不限時
+  var TURN_SECS = [10, 20, 30];          // 每回合限時（秒）
   var CAP_MIN = 2, CAP_MAX = 8;
 
   /* ---------- 亂數（可注入種子） ---------- */
@@ -79,7 +80,7 @@
   function createGame(o) {
     var mode = o.mode === 'count' ? 'count' : 'range';
     var rng = o.rng || rngFrom(randomSeed());
-    var setter = mode === 'range' && o.setter != null && o.seats.indexOf(o.setter) >= 0 ? o.setter : null;
+    var setter = o.setter != null && o.seats.indexOf(o.setter) >= 0 ? o.setter : null;
     var guessers = o.seats.filter(function (s) { return s !== setter; });
     var teams = o.teams || null;
     var order = buildOrder(guessers, teams, o.firstTeam);
@@ -91,10 +92,9 @@
       order: order, pos: order.length ? ((o.startPos || 0) % order.length + order.length) % order.length : 0, dir: 1,
       items: items, history: [], over: false, loser: null, loserTeam: null, reason: null, winners: [], turnNo: 1
     };
-    if (mode === 'range') {
-      var sec = Number(o.secret);
-      g.secret = Number.isInteger(sec) && sec >= MIN && sec <= MAX ? sec : rng.range(MIN, MAX);
-    }
+    /* 兩種模式都有一個 1～100 的密碼：一般模式猜中它輸；累加模式它是地雷，踩到或跨過它輸 */
+    var sec = Number(o.secret);
+    g.secret = Number.isInteger(sec) && sec >= MIN && sec <= MAX ? sec : rng.range(MIN, MAX);
     if (order.length < 1) endGame(g, null, 'empty');
     return g;
   }
@@ -148,9 +148,10 @@
     if (!legalAdd(g, n)) return { ok: false, err: 'bad_add' };
     var from = g.total;
     g.total += n;
-    var ev = { seat: seat, kind: 'add', value: n, from: from, to: g.total, result: g.total >= TARGET ? 'hit' : 'ok', auto: !!auto, turn: g.turnNo };
+    var boom = from < g.secret && g.secret <= g.total;     // 停在地雷上或跨過地雷
+    var ev = { seat: seat, kind: 'add', value: n, from: from, to: g.total, result: boom ? 'hit' : 'ok', mineAt: boom ? g.secret : undefined, auto: !!auto, turn: g.turnNo };
     g.history.push(ev);
-    if (g.total >= TARGET) endGame(g, seat, 'hit');
+    if (boom) endGame(g, seat, 'hit');
     else advance(g);
     return { ok: true, ev: ev };
   }
@@ -307,7 +308,7 @@
       if (r + b !== seats.length) return 'pick_team';
       if (!r || !b) return 'team_empty';
     }
-    if (o.mode === 'range' && o.setterMode === 'player' && pickSetter(seats, o.teams, 0) == null) return 'setter_need';
+    if (o.setterMode === 'player' && pickSetter(seats, o.teams, 0) == null) return 'setter_need';
     return null;
   }
 
@@ -397,7 +398,6 @@
       rounds: Number(pick('rounds', function (v) { return ROUNDS.indexOf(Number(v)) >= 0; })),
       cap: Number(pick('cap', function (v) { v = Number(v); return Number.isInteger(v) && v >= CAP_MIN && v <= CAP_MAX; }))
     };
-    if (out.mode === 'count') out.setterMode = 'cpu';
     return out;
   }
 

@@ -81,8 +81,8 @@ for (let k = 0; k < 120 && A.room().status === 'playing'; k++) {
   await sleep(220);
 }
 assert.strictEqual(A.room().status, 'finished', '在 Cloudflare 轉接層裡打完一局');
-assert.strictEqual(A.room().match.game.total, 100);
-console.log('✓ 兩位玩家在 runtime 轉接層完成一局（累加到 100）');
+{ const g = A.room().match.game; assert.ok(g.loser != null && g.total >= g.secret, '有人踩到或跨過地雷'); }
+console.log('✓ 兩位玩家在 runtime 轉接層完成一局（累加模式踩到地雷）');
 
 /* 逾時自動行動也要靠計時器：再開一場，等 15 秒以上太久，改成檢查 tick 有在跑（倒數會結束） */
 A.recv({ type: 'rematch', value: true }); B.recv({ type: 'rematch', value: true });

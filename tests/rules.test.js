@@ -1,7 +1,9 @@
 /* ===== tests/rules.test.js — 規則核心單元測試（node tests/rules.test.js）===== */
 'use strict';
 const assert = require('assert');
-const R = require('../public/js/core/rules.js');
+const R0 = require('../public/js/core/rules.js');
+/* 累加模式預設地雷放在 100（測試會走到的小數字都安全），測試才不會被隨機地雷提早結束 */
+const R = Object.assign({}, R0, { createGame: o => R0.createGame(o.mode === 'count' && o.secret == null && !o.randomMines ? Object.assign({ secret: 100 }, o) : o) });
 
 let passed = 0;
 function test(name, fn) {
@@ -64,9 +66,9 @@ test('玩家出題：出題者不在順序裡、不能猜', () => {
 });
 
 /* ---------- 累加模式 ---------- */
-test('累加：+1／+2／+3、超過 100 不合法、報到 100 輸', () => {
+test('累加：+1／+2／+3、超過 100 不合法、地雷在 100 時報到 100 輸', () => {
   const g = R.createGame({ mode: 'count', seats: [0, 1] });
-  assert.strictEqual(g.secret, null);
+  assert.strictEqual(g.secret, 100, '測試預設地雷在 100');
   assert.ok(R.add(g, 0, 3).ok); assert.strictEqual(g.total, 3);
   assert.strictEqual(R.add(g, 1, 4).err, 'bad_add');
   assert.strictEqual(R.add(g, 1, 0).err, 'bad_add');
@@ -79,16 +81,32 @@ test('累加：+1／+2／+3、超過 100 不合法、報到 100 輸', () => {
   assert.strictEqual(r.ev.result, 'hit'); assert.strictEqual(g.loser, 1);
 });
 
-test('累加：4 的倍數策略（報到 99 的人贏）', () => {
-  const g = R.createGame({ mode: 'count', seats: [0, 1] });
-  // 0 號一路把數字報到 4k+3，1 號被逼著報到 100
-  let me = 0;
-  while (!g.over) {
-    const seat = R.current(g);
-    if (seat === me) { const want = 3 - (g.total % 4); R.add(g, seat, want === 0 ? 1 : want); }
-    else R.add(g, seat, 1);
+test('累加地雷：只有一顆、停在上面或跨過都算踩中、一定有人踩中', () => {
+  const g = R.createGame({ mode: 'count', seats: [0, 1], secret: 10 });
+  assert.strictEqual(g.secret, 10);
+  R.add(g, 0, 3); R.add(g, 1, 3); R.add(g, 0, 3);    // 9，還沒到
+  assert.ok(!g.over && g.total === 9);
+  R.add(g, 1, 3);                                      // 9 → 12 跨過 10
+  assert.ok(g.over); assert.strictEqual(g.loser, 1);
+  const ev = g.history[g.history.length - 1];
+  assert.strictEqual(ev.result, 'hit'); assert.strictEqual(ev.mineAt, 10, '事件記下踩到的地雷');
+  const h = R.createGame({ mode: 'count', seats: [0, 1], secret: 4 });
+  R.add(h, 0, 3); R.add(h, 1, 1);                     // 停在 4
+  assert.strictEqual(h.loser, 1);
+  for (let i = 0; i < 300; i++) {                      // 隨機地雷、隨機步數：一定在 100 以內結束
+    const r = R0.rngFrom('c' + i);
+    const k = R0.createGame({ mode: 'count', seats: [0, 1, 2], rng: r });
+    assert.ok(k.secret >= 1 && k.secret <= 100);
+    let guard = 0;
+    while (!k.over && guard++ < 200) { const st = R0.legalSteps(k); R0.add(k, R0.current(k), st[r.int(st.length)]); }
+    assert.ok(k.over && k.total >= k.secret, '一定有人踩中');
   }
-  assert.strictEqual(g.loser, 1);
+});
+
+test('累加地雷：也能由玩家出題，出題者不報數', () => {
+  const g = R0.createGame({ mode: 'count', seats: [0, 1, 2], setter: 2, secret: 42, rng: R0.rngFrom(1) });
+  assert.deepStrictEqual(g.order, [0, 1]);
+  assert.strictEqual(g.secret, 42);
 });
 
 /* ---------- 道具 ---------- */
@@ -255,6 +273,7 @@ test('輪流出題：不組隊照座位、組隊兩隊交替且隊內至少 2 �
   assert.strictEqual(R.canStart({ seats: [0, 1], teams: { 0: 'red' } }), 'pick_team');
   assert.strictEqual(R.canStart({ seats: [0] }), 'need_players');
   assert.strictEqual(R.canStart({ seats: [0, 1], mode: 'count' }), null);
+  assert.strictEqual(R.canStart({ seats: [0, 1], mode: 'count', setterMode: 'player' }), 'setter_need', '累加模式玩家出題也要至少 3 人');
 });
 
 /* ---------- 單人 ---------- */
@@ -286,10 +305,12 @@ test('單人踩點：地雷可走通、+3 一路會踩雷、步數星數、踩�
 });
 
 /* ---------- 設定 ---------- */
-test('房間設定驗證：非法值沿用前值、累加模式只能電腦出題', () => {
+test('房間設定驗證：非法值沿用前值、累加模式也可玩家出題、限時只有 10／20／30 秒', () => {
   const s = R.normSettings({ mode: 'count', setterMode: 'player', turnSec: 7, rounds: 3, cap: 99, teams: 'x' });
-  assert.strictEqual(s.setterMode, 'cpu'); assert.strictEqual(s.turnSec, 30); assert.strictEqual(s.rounds, 3); assert.strictEqual(s.cap, 6); assert.strictEqual(s.teams, false);
-  assert.strictEqual(R.normSettings({ turnSec: 0 }).turnSec, 0, '不限時');
+  assert.strictEqual(s.setterMode, 'player'); assert.strictEqual(s.turnSec, 30); assert.strictEqual(s.rounds, 3); assert.strictEqual(s.cap, 6); assert.strictEqual(s.teams, false);
+  assert.deepStrictEqual(R.TURN_SECS, [10, 20, 30]);
+  assert.strictEqual(R.normSettings({ turnSec: 0 }).turnSec, 30, '不再有不限時');
+  assert.strictEqual(R.normSettings({ turnSec: 10 }).turnSec, 10);
 });
 
 /* ---------- 隨機對局模糊測試：不會卡住、一定有結果 ---------- */
@@ -301,7 +322,7 @@ test('隨機對局 2000 局都能結束且狀態一致', () => {
     const teamsOn = rng.next() < 0.5;
     const teams = teamsOn ? Object.fromEntries(seats.map(s => [s, s % 2 ? 'blue' : 'red'])) : null;
     const mode = rng.next() < 0.5 ? 'range' : 'count';
-    const g = R.createGame({ mode, seats, teams, rng, itemsOn: rng.next() < 0.8 });
+    const g = R.createGame({ mode, seats, teams, rng, itemsOn: rng.next() < 0.8, randomMines: true });
     let present = seats.slice();
     let guard = 0;
     while (!g.over && guard++ < 1000) {

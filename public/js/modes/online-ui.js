@@ -396,12 +396,12 @@
       var l = mt.log[mt.log.length - 1];
       return ['boom', l.loser != null ? ['host.roundHit', { n: nameOf(l.loser), r: mt.log.length }] : ['host.roundLeft', { r: mt.log.length }]];
     }
-    if (mt.phase === 'set') return ['think', g.setter === me ? ['host.youSet'] : ['host.setting', { n: nameOf(g.setter) }]];
+    if (mt.phase === 'set') return ['think', g.setter === me ? [g.mode === 'count' ? 'host.youSetMine' : 'host.youSet'] : ['host.setting', { n: nameOf(g.setter) }]];
     var h = g.history[g.history.length - 1];
     if (!h) return g.mode === 'count' ? ['idle', ['host.countStart']] : ['think', ['host.rangeStart']];
     var who = h.seat === me ? t('game.you') : nameOf(h.seat);
     if (h.kind === 'guess') return h.result === 'hit' ? ['boom', ['host.hitBy', { n: who, v: h.value }]] : [h.result, [h.result === 'low' ? 'host.lowBy' : 'host.highBy', { n: who, v: h.value }]];
-    if (h.kind === 'add') return h.result === 'hit' ? ['boom', ['host.hit100', { n: who }]] : ['idle', ['host.addBy', { n: who, v: h.value, to: h.to }]];
+    if (h.kind === 'add') return h.result === 'hit' ? ['boom', ['host.hit100', { n: who, m: h.mineAt }]] : ['idle', ['host.addBy', { n: who, v: h.value, to: h.to }]];
     if (h.kind === 'item') return ['happy', [h.item === 'assign' ? 'host.assignBy' : 'host.itemBy', { n: who, it: t('item.' + h.item), to: h.target != null ? nameOf(h.target) : '' }]];
     return ['idle', ['host.countStart']];
   }
@@ -424,7 +424,7 @@
     var turnText;
     if (room.status === 'between') turnText = t('game.between', { r: mt.log.length, n: mt.rounds });
     else if (room.status === 'finished') turnText = t('game.matchOver');
-    else if (setPhase) turnText = amSetter ? t('game.youSet') : t('game.settingBy', { n: nameOf(g.setter) });
+    else if (setPhase) turnText = amSetter ? t(g.mode === 'count' ? 'game.youSetMine' : 'game.youSet') : t('game.settingBy', { n: nameOf(g.setter) });
     else if (counting) turnText = t('game.getReady');
     else if (myTurn) turnText = t('game.yourTurn');
     else if (you.role === 'spectator') turnText = t('game.specTurn', { n: nameOf(cur) });
@@ -435,17 +435,17 @@
       kind: 'online', mode: g.mode, lo: g.lo, hi: g.hi, total: g.total, showRange: true,
       players: players, dir: g.dir, over: g.over || room.status !== 'playing',
       deadline: setPhase ? local(mt.setDeadline) : (playing && mt.deadline ? local(mt.deadline) : 0),
-      turnSec: setPhase ? Math.max(20, room.settings.turnSec || 30) : room.settings.turnSec,
+      turnSec: setPhase ? 30 : room.settings.turnSec,
       turnText: turnText, myTurn: myTurn || amSetter, canAct: myTurn || amSetter, itemsOn: g.itemsOn && !amSetter,
       items: me >= 0 && g.items[me] && g.order.indexOf(me) >= 0 ? g.items[me] : null,
       targets: myTurn ? R.assignTargets({ order: g.order }, me).map(function (s) { return { seat: s, name: nameOf(s), avatar: mt.avatars[s], team: mt.teams ? mt.teams[s] : null }; }) : [],
       history: g.history.map(function (h) { return Object.assign({}, h, { who: h.seat === me ? t('game.you') : nameOf(h.seat), mine: h.seat === me, targetName: h.target != null ? (h.target === me ? t('game.you') : nameOf(h.target)) : '' }); }),
-      secret: g.secret, hostMood: hl[0], hostText: t(hl[1][0], hl[1][1]), role: you.role,
+      secret: g.secret, isSetter: me >= 0 && g.setter === me, hostMood: hl[0], hostText: t(hl[1][0], hl[1][1]), role: you.role,
       counter: mt.rounds > 1 ? t('game.roundN', { a: Math.min(mt.round || 1, mt.rounds), b: mt.rounds }) : '',
-      submitLabel: amSetter ? t('game.lockSecret') : null, setMode: amSetter,
+      submitLabel: amSetter ? t(g.mode === 'count' ? 'game.lockMine' : 'game.lockSecret') : null, setMode: amSetter,
       summaryHtml: roomSummary()
     };
-    if (amSetter) { vm.lo = 1; vm.hi = 100; vm.showRange = true; vm.itemsOn = false; vm.items = null; }
+    if (amSetter) { vm.mode = 'range'; vm.lo = 1; vm.hi = 100; vm.showRange = true; vm.itemsOn = false; vm.items = null; }
     return vm;
   }
   var handlers = {
@@ -538,7 +538,7 @@
           room: { onClick: function () { app().show('room'); } },
           home: { onClick: function () { Net.send({ type: 'leave' }); leftRoom(); Net.close(); app().show('home'); } }
         };
-        if (room && room.settings.mode === 'range' && last.secret != null) o.reveal = { label: t('res.lastSecret'), value: last.secret };
+        if (room && last.secret != null) o.reveal = room.settings.mode === 'count' ? { label: t('res.lastMine'), value: last.secret, icon: 'mine' } : { label: t('res.lastSecret'), value: last.secret };
         if (m.rounds > 1) o.lines.unshift(t('res.rounds', { n: m.log.length }));
         if (recorded && recorded.unlocked) recorded.unlocked.forEach(function (id) { o.badges.push({ icon: (root.Store.ACH.find(function (x) { return x.id === id; }) || {}).icon, text: t('ach.unlocked', { name: t('ach.' + id) }) }); });
         return o;
