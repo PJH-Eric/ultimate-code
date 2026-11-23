@@ -1,23 +1,31 @@
 /* ===== storage.js — 本機儲存（全部包 try/catch：無痕、被擋時照樣能玩）=====
- * key 前綴 ultimate-code:v1。設定、暱稱、頭像、闖關星數、每日挑戰、戰績統計。
- * 壞資料自動回預設，不會讓遊戲當掉。
+ * key 前綴 ultimate-code:v1。設定、暱稱、頭像、單人紀錄、對局明細、統計與成就。
+ * 壞資料自動回預設，不會讓遊戲當掉；寫入失敗時 Store.saveOk 為 false（畫面可提示「未保存」）。
  */
 (function (root) {
   'use strict';
   var KEY = 'ultimate-code:v1';
+  var SCHEMA = 1;
+  var KEEP = 100;                 // 對局明細最多保留 100 局
   var DEFAULTS = {
-    ver: 8,                       // 資料版本：v0.8 起闖關改 50 關、每日挑戰分難度，舊進度不相容
+    ver: SCHEMA,
+    profileId: '',
     nickname: '', avatar: 0, lang: '',
-    musicOn: true, musicVol: 0.45, sfxOn: true, sfxVol: 0.8, vibrate: true,
+    musicOn: true, musicVol: 0.4, sfxOn: true, sfxVol: 0.8, vibrate: true,
     reduceMotion: false, colorAssist: false,
-    inputMode: 'both',            // both／wheel／keypad
-    autoSubmit: true, showKeys: 'auto', historyKeys: true,
-    lastSetup: { tier: 2, cs: 'digits' },
-    stars: [[]],                  // 闖關 50 關的星數（0＝未通關）；v0.8 起只有一條路線
-    daily: { done: {}, tiers: {} }, // done['日期:難度']，tiers[難度]＝{ last, streak, best, won }
-    stats: { games: 0, wins: 0, sumGuess: 0, fastest: 0, byKind: {}, dist: {}, byTier: {} }
+    inputMode: 'grid',            // grid 數字格／pad 數字鍵盤
+    showRange: true,              // 單人破解：顯示範圍提示
+    records: [],                  // 最近對局 { id, kind, result, metric, stars, at }
+    seen: {},                     // 已結算的 matchId（去重，不隨明細清理）
+    stats: {
+      crack: { games: 0, wins: 0, best: 0, sum: 0, stars3: 0 },
+      step: { games: 0, wins: 0, fails: 0, best: 0, stars3: 0 },
+      online: { games: 0, wins: 0, hits: 0 }
+    },
+    ach: {}                       // achievementId → unlockedAt（ms）
   };
   var data = null;
+  var saveOk = true;
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function load() {
     if (data) return data;
@@ -29,91 +37,92 @@
       if (raw[k] === undefined) return;
       if (typeof DEFAULTS[k] !== typeof raw[k]) return;
       if (Array.isArray(DEFAULTS[k]) !== Array.isArray(raw[k])) return;
-      if (typeof DEFAULTS[k] === 'object' && !Array.isArray(DEFAULTS[k])) data[k] = Object.assign(clone(DEFAULTS[k]), raw[k]);
+      if (k === 'stats') {
+        Object.keys(DEFAULTS.stats).forEach(function (s) { if (raw.stats[s] && typeof raw.stats[s] === 'object') data.stats[s] = Object.assign(clone(DEFAULTS.stats[s]), raw.stats[s]); });
+      } else if (typeof DEFAULTS[k] === 'object' && !Array.isArray(DEFAULTS[k])) data[k] = Object.assign(clone(DEFAULTS[k]), raw[k]);
       else data[k] = raw[k];
     });
-    if (raw.ver !== DEFAULTS.ver) {
-      /* v0.7 以前的闖關（四難度各 100 關）與每日挑戰（一天一題）格式不同，換成新格式；設定與戰績保留 */
-      data.stars = [[]]; data.daily = clone(DEFAULTS.daily); data.ver = DEFAULTS.ver;
-    }
-    if (!Array.isArray(data.stars) || !Array.isArray(data.stars[0])) data.stars = [[]];
-    if (!data.daily.tiers) data.daily.tiers = {};
+    data.records = data.records.filter(function (r) { return r && typeof r === 'object' && typeof r.id === 'string'; }).slice(-KEEP);
+    if (!data.profileId) data.profileId = 'u' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    data.ver = SCHEMA;
     return data;
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* 忽略 */ } }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); saveOk = true; }
+    catch (e) { saveOk = false; }
+    return saveOk;
+  }
   var listeners = [];
   function get(k) { return load()[k]; }
   function set(k, v) { load()[k] = v; save(); listeners.forEach(function (f) { try { f(k, v); } catch (e) { /* 忽略 */ } }); }
   function onChange(f) { listeners.push(f); }
-  /** 恢復預設設定（暱稱、頭像、語言、進度與戰績保留） */
+  /** 恢復預設設定（暱稱、頭像、語言、紀錄與成就保留） */
   function resetSettings() {
     var d = load();
-    var keep = { ver: d.ver, nickname: d.nickname, avatar: d.avatar, lang: d.lang, lastSetup: d.lastSetup, stars: d.stars, daily: d.daily, stats: d.stats };
+    var keep = { profileId: d.profileId, nickname: d.nickname, avatar: d.avatar, lang: d.lang, records: d.records, seen: d.seen, stats: d.stats, ach: d.ach };
     data = Object.assign(clone(DEFAULTS), keep);
     save();
     listeners.forEach(function (f) { try { f('*', null); } catch (e) { /* 忽略 */ } });
   }
-
-  /* ---------- 闖關 ---------- */
-  function starsOf(tier, L) { var a = load().stars[tier] || []; return a[L - 1] || 0; }
-  function setStars(tier, L, s) {
+  /** 清除紀錄與成就（設定保留） */
+  function clearRecords() {
     var d = load();
-    var a = d.stars[tier] || (d.stars[tier] = []);
-    if ((a[L - 1] || 0) < s) { a[L - 1] = s; save(); return true; }
-    return false;
-  }
-  function unlocked(tier, L) { return L === 1 || starsOf(tier, L - 1) > 0; }
-  function tierProgress(tier, from, to) { var a = load().stars[tier] || []; var c = 0, s = 0; for (var i = (from || 1) - 1; i < (to || 50); i++) { if (a[i]) { c++; s += a[i]; } } return { cleared: c, stars: s }; }
-
-  /* ---------- 每日挑戰（五個難度各自記錄） ---------- */
-  function dailyDone(date, tier) { return load().daily.done[date + ':' + tier] || null; }
-  function recordDaily(date, prevDate, tier, won, steps) {
-    var d = load().daily;
-    var key = date + ':' + tier;
-    var tt = d.tiers[tier] || (d.tiers[tier] = { last: '', streak: 0, best: 0, won: false });
-    if (d.done[key]) return tt;
-    d.done[key] = { won: !!won, steps: steps };
-    var keys = Object.keys(d.done).sort();
-    if (keys.length > 300) keys.slice(0, keys.length - 300).forEach(function (k) { delete d.done[k]; });
-    if (won) { tt.streak = (tt.last === prevDate && tt.won) ? tt.streak + 1 : 1; tt.best = Math.max(tt.best, tt.streak); }
-    else tt.streak = 0;
-    tt.won = !!won; tt.last = date;
+    d.records = []; d.seen = {}; d.stats = clone(DEFAULTS.stats); d.ach = {};
     save();
-    return tt;
   }
-  /** 目前連勝（最後一次不是今天或昨天＝已中斷） */
-  function liveStreak(today, yesterday, tier) {
-    var tt = load().daily.tiers[tier];
-    if (!tt) return 0;
-    return tt.last === today || tt.last === yesterday ? tt.streak : 0;
-  }
-  function bestStreak() { var t = load().daily.tiers, b = 0; Object.keys(t).forEach(function (k) { b = Math.max(b, t[k].best || 0); }); return b; }
 
-  /* ---------- 戰績 ---------- */
-  function record(o) {
-    /* o: { kind, tier, won, guesses } — 只計「玩家自己猜」的局 */
-    var s = load().stats;
-    s.games++;
-    if (o.won) {
-      s.wins++;
-      s.sumGuess += o.guesses;
-      if (!s.fastest || o.guesses < s.fastest) s.fastest = o.guesses;
-      var b = String(Math.min(13, o.guesses));
-      s.dist[b] = (s.dist[b] || 0) + 1;
+  /* ---------- 成就定義（穩定 id、門檻與計入模式） ---------- */
+  var ACH = [
+    { id: 'crack_first', icon: 'key', test: function (s) { return s.crack.wins >= 1; } },
+    { id: 'crack_3star', icon: 'star', test: function (s) { return s.crack.stars3 >= 1; } },
+    { id: 'crack_lucky', icon: 'dice', test: function (s, r) { return r && r.kind === 'crack' && r.result === 'win' && r.metric <= 3; } },
+    { id: 'step_first', icon: 'target', test: function (s) { return s.step.wins >= 1; } },
+    { id: 'step_perfect', icon: 'trophy', test: function (s) { return s.step.stars3 >= 1; } },
+    { id: 'online_first', icon: 'users', test: function (s) { return s.online.games >= 1; } },
+    { id: 'online_survivor', icon: 'crown', test: function (s) { return s.online.wins >= 5; }, goal: 5, prog: function (s) { return s.online.wins; } },
+    { id: 'games_10', icon: 'medal', test: function (s) { return s.crack.games + s.step.games + s.online.games >= 10; }, goal: 10, prog: function (s) { return s.crack.games + s.step.games + s.online.games; } }
+  ];
+
+  /**
+   * 結算一局（以 matchId 去重：重開結算、重連補送都只計一次）。
+   * @param {{id:string, kind:'crack'|'step'|'online', result:'win'|'lose'|'draw'|'left', metric?:number, stars?:number, hits?:number}} r
+   * @returns {{counted:boolean, best:boolean, unlocked:string[]}}
+   */
+  function recordMatch(r) {
+    var d = load();
+    if (!r || !r.id || d.seen[r.id]) return { counted: false, best: false, unlocked: [] };
+    d.seen[r.id] = Date.now();
+    var keys = Object.keys(d.seen);
+    if (keys.length > 2000) keys.sort(function (a, b) { return d.seen[a] - d.seen[b]; }).slice(0, keys.length - 2000).forEach(function (k) { delete d.seen[k]; });
+    var s = d.stats, best = false;
+    if (r.kind === 'crack') {
+      s.crack.games++;
+      if (r.result === 'win') {
+        s.crack.wins++; s.crack.sum += r.metric;
+        if (!s.crack.best || r.metric < s.crack.best) { best = true; s.crack.best = r.metric; }
+        if (r.stars === 3) s.crack.stars3++;
+      }
+    } else if (r.kind === 'step') {
+      s.step.games++;
+      if (r.result === 'win') {
+        s.step.wins++;
+        if (!s.step.best || r.metric < s.step.best) { best = true; s.step.best = r.metric; }
+        if (r.stars === 3) s.step.stars3++;
+      } else s.step.fails++;
+    } else if (r.kind === 'online') {
+      s.online.games++;
+      if (r.result === 'win' || r.result === 'draw') s.online.wins++;
+      s.online.hits += r.hits || 0;
     }
-    var k = s.byKind[o.kind] || (s.byKind[o.kind] = { games: 0, wins: 0, sumGuess: 0, fastest: 0, dist: {} });
-    k.games++;
-    if (o.won) {
-      k.wins++; k.sumGuess += o.guesses;
-      if (!k.fastest || o.guesses < k.fastest) k.fastest = o.guesses;
-      var kb = String(Math.min(13, o.guesses));
-      k.dist[kb] = (k.dist[kb] || 0) + 1;
-    }
-    if (o.tier != null && o.tier >= 0) {
-      var t = s.byTier[o.tier] || (s.byTier[o.tier] = { games: 0, wins: 0, best: 0 });
-      t.games++; if (o.won) { t.wins++; if (!t.best || o.guesses < t.best) t.best = o.guesses; }
-    }
+    d.records.push({ id: r.id, kind: r.kind, mode: r.mode || '', result: r.result, metric: r.metric || 0, stars: r.stars || 0, at: Date.now() });
+    if (d.records.length > KEEP) d.records = d.records.slice(-KEEP);
+    var unlocked = [];
+    ACH.forEach(function (a) {
+      if (d.ach[a.id]) return;
+      if (a.test(s, r)) { d.ach[a.id] = Date.now(); unlocked.push(a.id); }
+    });
     save();
+    return { counted: true, best: best, unlocked: unlocked };
   }
 
   /* 每個瀏覽器分頁一個祕密 id：斷線重連靠它認出同一個人 */
@@ -128,9 +137,9 @@
   }
 
   root.Store = {
-    get: get, set: set, onChange: onChange, resetSettings: resetSettings, DEFAULTS: DEFAULTS, save: save,
-    starsOf: starsOf, setStars: setStars, unlocked: unlocked, tierProgress: tierProgress,
-    dailyDone: dailyDone, recordDaily: recordDaily, liveStreak: liveStreak, bestStreak: bestStreak, record: record, clientId: clientId,
+    get: get, set: set, onChange: onChange, resetSettings: resetSettings, clearRecords: clearRecords, DEFAULTS: DEFAULTS, save: save,
+    recordMatch: recordMatch, ACH: ACH, clientId: clientId, KEEP: KEEP,
+    get saveOk() { return saveOk; },
     _reload: function () { data = null; return load(); }
   };
 })(typeof self !== 'undefined' ? self : this);

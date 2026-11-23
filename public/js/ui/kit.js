@@ -233,7 +233,7 @@
   function attach(el) {
     if (items.has(el)) return;
     var track = doc.createElement('div'), thumb = doc.createElement('div');
-    track.className = 'sb-track'; thumb.className = 'sb-thumb'; track.appendChild(thumb); layer.appendChild(track);
+    track.className = 'sb-track'; thumb.className = 'sb-thumb'; track.appendChild(thumb); track.setAttribute('aria-hidden', 'true'); doc.body.appendChild(track);
     var it = { track: track, thumb: thumb };
     items.set(el, it);
     thumb.addEventListener('pointerdown', function (e) {
@@ -281,11 +281,10 @@
     node.querySelectorAll('.scroll').forEach(attach);
   }
   function bootScroll() {
-    layer = doc.createElement('div'); layer.id = 'sb-layer'; layer.setAttribute('aria-hidden', 'true');
-    doc.body.appendChild(layer);
+    /* 捲軸直接掛在 body：若放進有 z-index 的 fixed 圖層，會被彈窗遮罩蓋住（彈窗內捲軸看不到） */
     scan(doc.body);
     /* 倒數數字、倒數條、自訂捲軸本身每 10ms 會變，不需要重算捲軸（否則每個 tick 都把所有捲軸重算一次） */
-    function noisy(m) { var t = m.target.nodeType === 1 ? m.target : m.target.parentElement; return !!(t && t.closest && t.closest('.clk, .timer-row, #sb-layer')); }
+    function noisy(m) { var t = m.target.nodeType === 1 ? m.target : m.target.parentElement; return !!(t && t.closest && t.closest('.clk, .timer-row, .sb-track, .gt-timer')); }
     new MutationObserver(function (ms) {
       var hit = false;
       ms.forEach(function (m) { if (noisy(m)) return; hit = true; m.addedNodes.forEach(scan); });

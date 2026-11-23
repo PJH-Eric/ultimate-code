@@ -1,5 +1,5 @@
 /* ===== audio.js — 音效與背景音樂（Web Audio 即時合成，不需要音檔）=====
- * 精緻密碼鎖風：撥輪喀喀、按鍵、送出、A 叮、B 噠、解鎖和弦、錯誤嗡、猜錯搖晃。
+ * 保險箱風：按鍵、送出、範圍收縮喀聲、踩中爆破、道具、倒數滴答。
  * BGM：木琴風可愛小調，輕鬆循環。第一次使用者手勢後才解鎖 AudioContext。
  * 之後要換成正式音檔，只要改 play() 的實作即可（介面不變）。
  */
@@ -72,7 +72,15 @@
     chat: function (t) { tone(1046, t, 0.08, { vol: 0.1 }); tone(1318, t + 0.07, 0.1, { vol: 0.08 }); },
     count: function (t) { tone(660, t, 0.14, { type: 'sine', vol: 0.16 }); },
     go: function (t) { tone(988, t, 0.1, { type: 'sine', vol: 0.18 }); tone(1318, t + 0.08, 0.28, { type: 'sine', vol: 0.16 }); },
-    turn: function (t) { tone(784, t, 0.1, { vol: 0.14 }); tone(1046, t + 0.1, 0.16, { vol: 0.12 }); }
+    turn: function (t) { tone(784, t, 0.1, { vol: 0.14 }); tone(1046, t + 0.1, 0.16, { vol: 0.12 }); },
+    /* 終極密碼：範圍收縮「喀」、踩中爆破、道具、最後 10 秒滴答 */
+    shrink: function (t) { noise(t, 0.03, 0.4, 2500); tone(520, t, 0.05, { type: 'square', vol: 0.06 }); noise(t + 0.07, 0.03, 0.3, 3000); },
+    boom: function (t) {
+      noise(t, 0.5, 0.6, 200); tone(140, t, 0.45, { type: 'sawtooth', vol: 0.12, slide: 50 });
+      [880, 700, 560].forEach(function (f, i) { tone(f, t + 0.45 + i * 0.12, 0.18, { type: 'triangle', vol: 0.12 }); });
+    },
+    item: function (t) { tone(660, t, 0.08, { vol: 0.14, slide: 990 }); tone(1320, t + 0.08, 0.14, { vol: 0.1 }); },
+    warn: function (t) { tone(1500, t, 0.04, { type: 'square', vol: 0.05 }); }
   };
 
   function play(name) {
