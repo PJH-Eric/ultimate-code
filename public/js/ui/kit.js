@@ -260,8 +260,19 @@
     }
     return true;
   }
+  /** 捲動區或它的外層正在播動畫／過場（例如彈窗縮放進場、抽屜滑入）：位置每一格都在變 */
+  function animating(el) {
+    if (!doc.getAnimations) return false;
+    var list = doc.getAnimations();
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i], tg = a.effect && a.effect.target;
+      if (a.playState === 'running' && tg && tg.nodeType === 1 && tg.contains(el)) return true;
+    }
+    return false;
+  }
   function update() {
     queued = false;
+    var again = false;
     items.forEach(function (it, el) {
       if (!el.isConnected) { it.track.remove(); items.delete(el); return; }
       var r = el.getBoundingClientRect();
@@ -274,7 +285,10 @@
       for (var n = el; n; n = n.parentElement) { var zi = parseInt(getComputedStyle(n).zIndex, 10); if (!isNaN(zi)) { z = zi; } }
       tr.zIndex = String(z + 1);
       it.thumb.style.height = th + 'px'; it.thumb.style.transform = 'translateY(' + (room * el.scrollTop / max) + 'px)';
+      if (animating(el)) again = true;
     });
+    /* 有捲軸跟著正在動的元素：下一格再對一次位置，動畫結束就自然停止 */
+    if (again) schedule();
   }
   function schedule() { if (!queued) { queued = true; requestAnimationFrame(update); } }
   function layerReady() { return !!(doc && doc.body); }
