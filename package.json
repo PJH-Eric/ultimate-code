@@ -1,0 +1,19 @@
+{
+  "name": "ultimate-code",
+  "version": "1.0.0",
+  "description": "終極密碼：一般模式（範圍縮小）與累加模式（+1／+2／+3），踩中的人輸。單人挑戰、線上多人（紅藍組隊、輪流出題）、道具、觀戰與邀請連結（零依賴）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/rules.test.js && node tests/lobby-chat.cjs && node tests/online-check.js",
+    "test:rules": "node tests/rules.test.js",
+    "test:online": "node tests/online-check.js",
+    "gen:hans": "python3 scripts/gen-hans.py",
+    "inject": "node scripts/inject-server-url.js"
+  },
+  "engines": {
+    "node": "^26.12.1"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
