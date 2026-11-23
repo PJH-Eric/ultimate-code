@@ -4,7 +4,7 @@
 # 注意：Render 不能修改既有服務的 region，這份設定只對「新建」的服務生效。
 services:
   - type: web
-    name: ultimate-code
+    name: ultimate-code-sg   # ultimate-code.onrender.com 已被他人使用，網址會是 ultimate-code-sg.onrender.com
     runtime: node
     region: singapore
     plan: free

@@ -6,7 +6,7 @@
 
 | 環節 | 位置 | 說明 |
 | --- | --- | --- |
-| 選擇後端 | game-lobby `cloudflare/site-backend.js`（GitHub Pages 上的 `/game-lobby/backend-routing.js`） | 本遊戲頁面載入這支共用腳本，`Net` 透過 `GameBackend.select()`／`createSocket()` 依序探測 Render、Cloudflare。設定：`'ultimate-code': ['ultimate-code', '/ws']`（Render 服務名 `ultimate-code`，Cloudflare worker 預設 `ultimate-code-backup`）。 |
+| 選擇後端 | game-lobby `cloudflare/site-backend.js`（GitHub Pages 上的 `/game-lobby/backend-routing.js`） | 本遊戲頁面載入這支共用腳本，`Net` 透過 `GameBackend.select()`／`createSocket()` 依序探測 Render、Cloudflare。設定：`'ultimate-code': ['ultimate-code-sg', '/ws']`（Render 服務名 `ultimate-code-sg`；`ultimate-code.onrender.com` 已被他人使用，Cloudflare worker 預設 `ultimate-code-backup`）。 |
 | Cloudflare 後端 | game-lobby `cloudflare/build.cjs`＋`games.cjs` | 把本專案的 `server.js` 原樣包進 Durable Object。`server.js` 偵測外層傳入的 `runtime`，改用它的 ws／計時器／房間儲存，game-lobby 不需要為本遊戲寫特例。設定：`'ultimate-code': { path: '/ws', maxPayload: 8192 }`。 |
 | 房間固定後端 | `public/js/modes/online-ui.js` | 進房後 `GameBackend.rememberRoom()` 記住這間房在哪個後端；重新整理、斷線重連都連回同一個後端。邀請連結經 `GameBackend.pinInvite()` 帶 `backend=`，受邀者也進到同一個後端。離開或房間結束時 `forgetRoom()`。 |
 | 回房 | `server.js`、`public/js/online.js` | 同一分頁記住房號，重連時 `hello` 帶 `resumeRoomId`；伺服器依 `clientId` 認出原玩家送回原座位，房間不存在回 `resume_fail`。斷線 30 秒內保留座位；切回分頁或網路恢復時立即重連。 |
