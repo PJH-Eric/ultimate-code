@@ -64,7 +64,7 @@
     $('btn-lobby').hidden = screen !== 'home' || !root.LobbyLink || !root.LobbyLink.url;
     if (!$('btn-lobby').hidden) $('btn-lobby').href = root.LobbyLink.url;
     $('btn-back').hidden = screen === 'home' || screen === 'boot';
-    $('btn-side').hidden = !inGame;
+    $('btn-side').hidden = !(inGame || screen === 'room');
     if (screen === 'home') setTitle('');
     else if (!inGame && screen !== 'room') setTitle(t('title.' + screen));
   }

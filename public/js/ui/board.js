@@ -153,7 +153,7 @@
       '<div class="in-toggle seg" role="radiogroup" aria-label="' + esc(t('set.inputMode')) + '">' +
       '<button type="button" role="radio" class="seg-btn" data-im="grid" aria-checked="' + (mode === 'grid') + '" title="' + esc(t('im.grid')) + '" aria-label="' + esc(t('im.grid')) + '">' + K.icon('grid') + '</button>' +
       '<button type="button" role="radio" class="seg-btn" data-im="pad" aria-checked="' + (mode === 'pad') + '" title="' + esc(t('im.pad')) + '" aria-label="' + esc(t('im.pad')) + '">' + K.icon('keypad') + '</button></div>' +
-      '<button type="button" class="btn primary submit" id="k-submit"' + (vm.canAct && selOk ? '' : ' disabled') + '>' + K.icon('enter') + '<span>' + esc(t('game.submit')) + '</span></button></div>';
+      '<button type="button" class="btn primary submit" id="k-submit"' + (vm.canAct && selOk ? '' : ' disabled') + '>' + K.icon(vm.setMode ? 'lock' : 'enter') + '<span>' + esc(vm.submitLabel || t('game.submit')) + '</span></button></div>';
     html += itemsBlock();
     return html + '</div>';
   }

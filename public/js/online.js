@@ -1,10 +1,12 @@
 /* 連線層：喚醒（Render 免費層會休眠）→ WebSocket → 心跳／測速 → 斷線自動重連。
+   三級備援：有記住的房間時（resumeRoom），hello 帶 resumeRoomId，只連回原後端（GameBackend 依 sessionStorage 固定），
+   等待上限從 100 秒放寬到 3 分鐘，畫面顯示「等待原房間恢復」並可取消。
    身分用 sessionStorage 裡的 clientId 認人，所以同一個分頁斷線後重連會回到原本的席位。 */
 (function (root) {
   'use strict';
   const handlers = {};
   const Net = {
-    status: 'idle', ws: null, personId: null, name: '', reconnectMs: 30000, wantOn: false,
+    status: 'idle', ws: null, resumeRoom: null, personId: null, name: '', reconnectMs: 30000, wantOn: false,
     lastMsgAt: 0, retry: 0, pingTimer: null, watchTimer: null, rtt: null, welcomed: false,
     get enabled() { return !!(root.Config && root.Config.status === 'ok' && root.Config.serverUrl); },
     get wsUrl() { return root.Config.serverUrl.replace(/^http/i, 'ws') + '/ws'; },
@@ -49,7 +51,7 @@
           if (r.ok) break;
         } catch (e) { /* 還沒醒 */ }
         if (!this.wantOn) return;
-        if (Date.now() - t0 > 100000) { this.setStatus('failed'); this.wantOn = false; return; }
+        if (Date.now() - t0 > (this.resumeRoom ? 180000 : 100000)) { this.setStatus('failed'); this.wantOn = false; return; }
         await new Promise(r => setTimeout(r, 2200));
         if (!this.wantOn) return;
         this.setStatus('waking', Math.round((Date.now() - t0) / 1000));
@@ -64,7 +66,7 @@
       this.ws = ws; this.welcomed = false;
       ws.onopen = () => {
         this.lastMsgAt = Date.now();
-        this.send({ type: 'hello', name: this.name, clientId: root.Store.clientId(), cue: 0 });
+        this.send(Object.assign({ type: 'hello', name: this.name, clientId: root.Store.clientId(), cue: 0 }, this.resumeRoom ? { resumeRoomId: this.resumeRoom } : {}));
         this.startTimers();
       };
       ws.onmessage = ev => {

@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/rules.test.js && node tests/lobby-chat.cjs && node tests/online-check.js",
+    "test": "node tests/rules.test.js && node tests/rooms.test.js && node tests/lobby-chat.cjs && node tests/online-check.js",
     "test:rules": "node tests/rules.test.js",
     "test:online": "node tests/online-check.js",
     "gen:hans": "python3 scripts/gen-hans.py",
